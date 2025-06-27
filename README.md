@@ -1,4 +1,4 @@
-# ZenithTracker 
+# Personalized Habit Tracker 
 
 ---
 

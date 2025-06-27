@@ -1,0 +1,2322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mood & Habits Tracker</title>
+    
+    <!-- Favicon and Fonts -->
+    <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/3448/3448338.png" type="image/png">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Chart.js for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+
+    <style>
+        /* Use the Inter font stack */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f9fafb; /* Lighter gray */
+        }
+
+        /* Custom styling for the range input slider */
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none;
+            width: 24px; height: 24px;
+            background: #4F46E5; /* Indigo */
+            border-radius: 50%; cursor: grab;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            margin-top: -8px; 
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        input[type="range"]:active::-webkit-slider-thumb {
+            cursor: grabbing; transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 24px; height: 24px; background: #4F46E5;
+            border-radius: 50%; cursor: grab; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+        input[type="range"]::-webkit-slider-runnable-track {
+            height: 8px; background: #E0E7FF; /* Indigo-100 */
+            border-radius: 4px;
+        }
+        input[type="range"]::-moz-range-track {
+            height: 8px; background: #E0E7FF; border-radius: 4px;
+        }
+
+        /* Styles for smooth modal transitions */
+        .modal { transition: opacity 0.3s ease, visibility 0.3s ease; }
+        .modal-content { transition: transform 0.3s ease; }
+
+        /* Styles for collapsible sections */
+        .collapsible-content {
+            max-height: 0; overflow: hidden;
+            transition: max-height 0.5s ease-in-out;
+        }
+        .collapsible-content.expanded { max-height: 1000px; }
+
+        /* Hide scrollbar but allow scrolling */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Calendar Styles */
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+        .calendar-day {
+            min-height: 120px;
+            transition: background-color 0.3s;
+        }
+        .calendar-day-other-month { color: #9ca3af; } /* text-gray-400 */
+        .calendar-day-today { border: 2px solid #4F46E5; } /* border-indigo-600 */
+        
+        /* Active nav link style */
+        .nav-link.active {
+            background-color: #4f46e5;
+            color: white;
+        }
+        .nav-link {
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-weight: 500;
+            transition: background-color 0.2s, color 0.2s;
+        }
+        .nav-link:not(.active):hover {
+            background-color: #eef2ff;
+        }
+
+        /* Basic loading text animation */
+        @keyframes blink {
+            0% { opacity: 0.4; }
+            50% { opacity: 1; }
+            100% { opacity: 0.4; }
+        }
+        .loading-text {
+            animation: blink 1.5s infinite;
+        }
+
+        /* Breath Helper specific styles */
+        .breathing-circle-container {
+            width: 250px; height: 250px;
+            border-radius: 50%;
+            background-color: #A5B4FC; /* Light indigo */
+            display: flex; justify-content: center; align-items: center;
+            transition: transform 4s ease-in-out; /* Default transition */
+            margin: 2rem auto;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .breathing-circle-container.breathing-in {
+            transform: scale(1.25);
+            background-color: #4F46E5; /* Darker indigo */
+            transition: transform var(--inhale-duration) ease-in-out;
+        }
+
+        .breathing-circle-container.breathing-hold {
+            transform: scale(1.25);
+            background-color: #4F46E5; /* Darker indigo */
+            transition: transform var(--hold-duration) linear; /* No transform, just holding state */
+        }
+
+        .breathing-circle-container.breathing-out {
+            transform: scale(1);
+            background-color: #A5B4FC; /* Light indigo */
+            transition: transform var(--exhale-duration) ease-in-out;
+        }
+
+        .breathing-text {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #ffffff;
+            text-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Main Application Container -->
+    <div id="app-container" class="w-full max-w-7xl mx-auto bg-white rounded-2xl shadow-xl my-4 md:my-8 p-4 sm:p-6 md:p-8 flex flex-col gap-6 opacity-0 transition-opacity duration-500">
+        
+        <div id="user-info" class="absolute top-2 right-4 text-xs text-gray-400">Loading...</div>
+
+        <header class="flex flex-col sm:flex-row justify-between items-center gap-4 border-b border-gray-200 pb-6">
+            <h1 class="text-2xl sm:text-3xl font-bold text-indigo-600">Zenith Tracker</h1>
+            <nav class="flex flex-wrap justify-center gap-1 sm:gap-2">
+                <button class="nav-link active" data-target="dashboard-section">Dashboard</button>
+                <button class="nav-link" data-target="mood-logging-section">Log Mood</button>
+                <button class="nav-link" data-target="habit-tracking-section">Habits</button>
+                <button class="nav-link" data-target="hydration-section">Hydration</button>
+                <button class="nav-link" data-target="sleep-tracking-section">Sleep</button>
+                <button class="nav-link" data-target="breath-helper-section">Breath</button> <!-- New Nav Link -->
+                <button class="nav-link" data-target="calendar-section">Calendar</button>
+                <button class="nav-link" data-target="analytics-section">Analytics</button>
+                <button class="nav-link" data-target="recommendations-section">Recommendations</button> <!-- New Nav Link -->
+            </nav>
+        </header>
+
+        <main>
+            <div id="dashboard-section" class="content-section"></div>
+            <div id="mood-logging-section" class="content-section hidden"></div>
+            <div id="habit-tracking-section" class="content-section hidden"></div>
+            <div id="hydration-section" class="content-section hidden"></div>
+            <div id="sleep-tracking-section" class="content-section hidden"></div>
+            <div id="breath-helper-section" class="content-section hidden"></div> <!-- New Content Section -->
+            <div id="calendar-section" class="content-section hidden"></div>
+            <div id="analytics-section" class="content-section hidden"></div>
+            <div id="recommendations-section" class="content-section hidden"></div> <!-- New Content Section -->
+        </main>
+    </div>
+
+    <!-- Modals (Habit & Confirmation) -->
+    <div id="habit-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 invisible opacity-0">
+        <div class="modal-content transform -translate-y-10 bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 id="habit-modal-title" class="text-xl font-bold">Add New Habit</h2>
+                <button id="close-habit-modal" class="text-gray-400 hover:text-gray-600 text-3xl leading-none">&times;</button>
+            </div>
+            <form id="habit-form" class="space-y-4">
+                <input type="hidden" id="habit-id">
+                <div>
+                    <label for="new-habit-name" class="block text-sm font-medium text-gray-700">Habit Name</label>
+                    <input type="text" id="new-habit-name" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-indigo-500 focus:border-indigo-500" placeholder="e.g., Meditate for 10 minutes">
+                </div>
+                <div class="flex justify-end">
+                    <button type="button" id="suggest-habits-btn" class="px-3 py-1 bg-purple-600 text-white font-semibold rounded-md hover:bg-purple-700 text-sm flex items-center gap-1">✨Suggest Habits</button>
+                </div>
+                <!-- Updated habit-suggestions-output with border and padding -->
+                <div id="habit-suggestions-output" class="text-gray-600 text-sm mt-2 italic p-2 rounded-md border border-dashed border-gray-300 hidden"></div>
+                <div>
+                    <label for="habit-frequency" class="block text-sm font-medium text-gray-700">Frequency</label>
+                    <select id="habit-frequency" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        <option value="daily">Daily</option>
+                        <option value="specific-days">Specific Days</option>
+                    </select>
+                </div>
+                <div id="specific-days-container" class="collapsible-content"><div class="flex flex-wrap gap-2"></div></div>
+                 <div class="flex gap-4">
+                    <div class="flex-1">
+                        <label for="habit-start-date" class="block text-sm font-medium text-gray-700">Start Date</label>
+                        <input type="date" id="habit-start-date" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                    </div>
+                    <div class="flex-1">
+                        <label for="habit-end-date" class="block text-sm font-medium text-gray-700">End Date (Optional)</label>
+                        <input type="date" id="habit-end-date" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                    </div>
+                </div>
+                <div>
+                    <label for="habit-reminder-time" class="block text-sm font-medium text-gray-700">Reminder Time (Optional)</label>
+                    <input type="time" id="habit-reminder-time" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                </div>
+                <div>
+                    <label for="habit-color-picker" class="block text-sm font-medium text-gray-700">Color</label>
+                    <input type="color" id="habit-color-picker" value="#A5B4FC" class="mt-1 w-full h-10 border border-gray-300 rounded-md cursor-pointer">
+                </div>
+                <div class="flex justify-end gap-3 pt-4">
+                    <button type="button" id="cancel-habit-modal" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cancel</button>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">Save Habit</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <div id="confirm-modal" class="modal fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 invisible opacity-0">
+        <div class="modal-content transform -translate-y-10 bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 text-center">
+            <h2 id="confirm-modal-title" class="text-xl font-bold mb-4">Are you sure?</h2>
+            <p id="confirm-modal-text" class="text-gray-600 mb-6">This action cannot be undone.</p>
+            <div class="flex justify-center gap-4">
+                <button id="confirm-modal-cancel" class="px-6 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Cancel</button>
+                <button id="confirm-modal-ok" class="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Application Logic -->
+    <script type="module">
+        // --- App State & Local Storage Keys ---
+        let moodLogs = [], habits = [], dailyHabitStatuses = [];
+        let sleepLogs = []; 
+        let breathLogs = []; 
+        let habitStreaks = {};
+        let moodChartInstance = null, habitChartInstance = null, hydrationChartInstance = null, sleepChartInstance = null, breathChartInstance = null; // Added new chart instances
+        let currentCalendarDate = new Date();
+        let hasInitialDataLoaded = false;
+        let hasResetBeenChecked = false;
+
+        // Hydration specific state
+        let dailyWaterNeed = 0; // in ml
+        let dailyIntake = 0; // in ml
+
+        // Breathing exercise state
+        let breathingInterval = null;
+        let currentPhase = 'initial'; // 'initial', 'inhale', 'hold', 'exhale'
+        let inhaleDuration = 4; // seconds
+        let holdDuration = 4; // seconds
+        let exhaleDuration = 4; // seconds
+        let phaseTimeoutId = null;
+        let sessionStartTime = null; // New: To track the start of a breathing session
+
+        // Local Storage Keys
+        const LS_MOOD_LOGS = 'zenithTrackerMoodLogs';
+        const LS_HABITS = 'zenithTrackerHabits';
+        const LS_HABIT_STATUSES = 'zenithTrackerHabitStatuses';
+        const LS_METADATA = 'zenithTrackerMetadata';
+        const LS_HYDRATION_LOGS = 'zenithTrackerHydrationLogs';
+        const LS_NOTIFICATIONS_SENT = 'zenithTrackerNotificationsSent';
+        const LS_SLEEP_LOGS = 'zenithTrackerSleepLogs'; 
+        const LS_BREATH_LOGS = 'zenithTrackerBreathLogs'; 
+
+        // --- UI Element References ---
+        const appContainer = document.getElementById('app-container');
+        const userInfo = document.getElementById('user-info');
+        const habitModal = document.getElementById('habit-modal');
+        const confirmModal = document.getElementById('confirm-modal');
+        const moodInsightOutput = document.createElement('div'); 
+        moodInsightOutput.id = 'mood-insight-output';
+        moodInsightOutput.className = 'bg-blue-100 text-blue-800 p-3 rounded-md mt-4 hidden';
+
+        const habitSuggestionsOutput = document.getElementById('habit-suggestions-output'); 
+        const sleepAnalysisOutput = document.createElement('div'); 
+        sleepAnalysisOutput.id = 'sleep-analysis-output'; // No longer used, but kept for potential future use
+        sleepAnalysisOutput.className = 'bg-blue-100 text-blue-800 p-3 rounded-md mt-4 hidden';
+        
+        // --- Helper Functions ---
+        const hexToRgb = (hex = '#ffffff') => {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? [parseInt(result[1], 16), parseInt(result[2], 16), parseInt(result[3], 16)] : [255, 255, 255];
+        };
+        const getTextColorForBackground = (hexColor) => {
+            const [r, g, b] = hexToRgb(hexColor);
+            return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.5 ? 'text-gray-800' : 'text-white';
+        };
+        const formatDateTime = (date) => new Date(date)?.toLocaleString('en-US', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) || 'Invalid Date';
+        const toYYYYMMDD = (date) => {
+            const d = new Date(date);
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
+        const generateUniqueId = () => '_' + Math.random().toString(36).substr(2, 9); 
+
+        // Beverage conversion factors (water equivalent per 1ml)
+        const BEVERAGE_WATER_EQUIVALENT = {
+            'water': 1.0,
+            'tea': 1.0, 
+            'coffee': 0.8, 
+            'cold-drinks': 0.5, 
+            'juice': 0.8 
+        };
+
+        const DRINK_COLORS = {
+            'water': '#4F46E5', 
+            'tea': '#10B981', 
+            'coffee': '#EAB308', 
+            'cold-drinks': '#EF4444', 
+            'juice': '#F97316', 
+            'remaining': '#E0E7FF' 
+        };
+
+        let notificationsSentToday = {}; 
+        let hydrationLogs = {}; 
+        
+        // --- Local Storage Operations ---
+        const loadData = () => {
+            try {
+                moodLogs = JSON.parse(localStorage.getItem(LS_MOOD_LOGS) || '[]').map(log => ({
+                    ...log,
+                    timestamp: new Date(log.timestamp) 
+                }));
+                habits = JSON.parse(localStorage.getItem(LS_HABITS) || '[]').map(habit => ({
+                    ...habit,
+                    createdAt: new Date(habit.createdAt) 
+                }));
+                dailyHabitStatuses = JSON.parse(localStorage.getItem(LS_HABIT_STATUSES) || '{}');
+                
+                sleepLogs = JSON.parse(localStorage.getItem(LS_SLEEP_LOGS) || '[]').map(log => ({
+                    ...log,
+                    date: new Date(log.date) 
+                }));
+                
+                breathLogs = JSON.parse(localStorage.getItem(LS_BREATH_LOGS) || '[]').map(log => ({
+                    ...log,
+                    timestamp: new Date(log.timestamp)
+                }));
+
+                const metadata = JSON.parse(localStorage.getItem(LS_METADATA) || '{}');
+                dailyWaterNeed = metadata.dailyWaterNeed || 0;
+                
+                hydrationLogs = JSON.parse(localStorage.getItem(LS_HYDRATION_LOGS) || '{}');
+                const todayKey = toYYYYMMDD(new Date());
+                dailyIntake = hydrationLogs[todayKey] ? hydrationLogs[todayKey].totalIntake : 0;
+
+                console.log("Local Storage: Data loaded successfully.");
+            } catch (e) {
+                console.error("Local Storage: Error loading data", e);
+                localStorage.clear();
+                moodLogs = []; habits = []; dailyHabitStatuses = {}; dailyWaterNeed = 0; dailyIntake = 0;
+                hydrationLogs = {}; 
+                sleepLogs = []; 
+                breathLogs = []; 
+            }
+        };
+
+        const saveData = () => {
+            localStorage.setItem(LS_MOOD_LOGS, JSON.stringify(moodLogs));
+            localStorage.setItem(LS_HABITS, JSON.stringify(habits));
+            localStorage.setItem(LS_HABIT_STATUSES, JSON.stringify(dailyHabitStatuses));
+            localStorage.setItem(LS_METADATA, JSON.stringify({ dailyWaterNeed }));
+            localStorage.setItem(LS_SLEEP_LOGS, JSON.stringify(sleepLogs)); 
+            localStorage.setItem(LS_BREATH_LOGS, JSON.stringify(breathLogs)); 
+            
+            localStorage.setItem(LS_HYDRATION_LOGS, JSON.stringify(hydrationLogs));
+            
+            saveNotificationsSent(); 
+            console.log("Local Storage: Data saved successfully.");
+        };
+
+        const loadNotificationsSent = () => {
+            const todayKey = toYYYYMMDD(new Date());
+            const stored = JSON.parse(localStorage.getItem(LS_NOTIFICATIONS_SENT) || '{}');
+            notificationsSentToday = stored[todayKey] || {};
+        };
+
+        const saveNotificationsSent = () => {
+            const todayKey = toYYYYMMDD(new Date());
+            const allNotifications = JSON.parse(localStorage.getItem(LS_NOTIFICATIONS_SENT) || '{}');
+            allNotifications[todayKey] = notificationsSentToday;
+            localStorage.setItem(LS_NOTIFICATIONS_SENT, JSON.stringify(allNotifications));
+        };
+        
+        // --- Modals and Navigation ---
+        const toggleModal = (modal, show) => {
+            const content = modal.querySelector('.modal-content');
+            if (show) {
+                modal.classList.remove('invisible', 'opacity-0');
+                content.classList.remove('-translate-y-10');
+            } else {
+                modal.classList.add('opacity-0');
+                content.classList.add('-translate-y-10');
+                setTimeout(() => modal.classList.add('invisible'), 300);
+            }
+        };
+        
+        let confirmCallback = null;
+        const showConfirmation = (title, text, onConfirm) => {
+            confirmModal.querySelector('#confirm-modal-title').textContent = title;
+            confirmModal.querySelector('#confirm-modal-text').textContent = text;
+            confirmCallback = onConfirm;
+            toggleModal(confirmModal, true);
+        };
+        
+        const showSection = (targetId) => {
+            document.querySelectorAll('.content-section').forEach(s => s.classList.add('hidden'));
+            const section = document.getElementById(targetId);
+            if(section) section.classList.remove('hidden');
+            document.querySelectorAll('.nav-link').forEach(l => l.classList.toggle('active', l.dataset.target === targetId));
+            
+            // Special handling for breath helper section to stop animation when leaving
+            if (targetId !== 'breath-helper-section') { 
+                stopBreathing(false); // Stop breathing animation if navigating away, don't log duration
+            }
+            renderContentForSection(targetId); 
+        };
+        
+        const renderContentForSection = (sectionId) => {
+            const section = document.getElementById(sectionId);
+            if (!section) return;
+            clearTimeout(section.renderTimeout);
+            section.renderTimeout = setTimeout(() => {
+                if (!hasInitialDataLoaded) return;
+                switch (sectionId) {
+                    case 'dashboard-section': section.innerHTML = renderDashboard(); break;
+                    case 'mood-logging-section': section.innerHTML = renderMoodLoggingPage(); break;
+                    case 'habit-tracking-section': section.innerHTML = renderHabitTrackingPage(); break;
+                    case 'hydration-section': 
+                        section.innerHTML = renderHydrationPage();
+                        updateHydrationChart(); 
+                        break;
+                    case 'sleep-tracking-section': 
+                        section.innerHTML = renderSleepTrackingPage(); 
+                        // Removed sleepAnalysisOutput append from here
+                        break; 
+                    case 'breath-helper-section':
+                        section.innerHTML = renderBreathHelperPage();
+                        // Initialize breathing settings inputs
+                        document.getElementById('inhale-duration-input').value = inhaleDuration;
+                        document.getElementById('hold-duration-input').value = holdDuration;
+                        document.getElementById('exhale-duration-input').value = exhaleDuration;
+                        break;
+                    case 'calendar-section': section.innerHTML = renderCalendarView(currentCalendarDate); break;
+                    case 'analytics-section': 
+                        section.innerHTML = renderAnalyticsPage();
+                        // Default to 7 days for all analytics charts
+                        renderSummaryStatistics('7days'); // Render summary with default period
+                        renderMoodTrendChart('7days');
+                        renderHabitCompletionChart('7days');
+                        renderSleepTrendChart('7days');
+                        renderHydrationTrendChart('7days');
+                        renderBreathTrendChart('7days');
+                        break;
+                    case 'recommendations-section':
+                        section.innerHTML = renderRecommendationsPage();
+                        // Default to '7days' analysis when entering the recommendations section
+                        generatePersonalizedRecommendations('7days'); 
+                        break;
+                }
+            }, 50);
+        };
+        
+        // --- HTML Template Renderers ---
+        const SVG_ICONS = {
+            plus: `<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd" /></svg>`,
+            edit: `<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>`,
+            trash: `<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>`,
+            fire: `<svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M5.5 2a.5.5 0 00-.5.5v1.25a.75.75 0 01-1.5 0V2.5a2 2 0 012-2h1a2 2 0 012 2v1.25a.75.75 0 01-1.5 0V2.5a.5.5 0 00-.5-.5h-1z" /><path fill-rule="evenodd" d="M8.25 6.5a.75.75 0 01.75-.75h2a.75.75 0 010 1.5h-2a.75.75 0 01-.75-.75zM3 10.5a.75.75 0 01.75-.75h8.5a.75.75 0 010 1.5H3.75a.75.75 0 01-.75-.75zM3.75 14a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-4.5z" clip-rule="evenodd" /></svg>`,
+        };
+        const MOOD_EMOJIS = ['😡', '😠', '😞', '😔', '😐', '🙂', '😊', '😄', '😁', '🤩'];
+        const getMoodColor = (level) => `hsl(${(level - 1) * 12 + 5}, 80%, 60%)`;
+
+        function renderDashboard() {
+            const today = new Date();
+            const sevenDaysAgo = new Date(today);
+            sevenDaysAgo.setDate(today.getDate() - 6);
+            const recentMoods = moodLogs.filter(log => new Date(log.timestamp) >= sevenDaysAgo);
+            const avgMood = recentMoods.length ? (recentMoods.reduce((sum, log) => sum + log.moodLevel, 0) / recentMoods.length).toFixed(1) : '--';
+            
+            let dueCount = 0, completedCount = 0;
+            habits.forEach(habit => {
+                if(isHabitDueOn(habit, today)) {
+                    dueCount++;
+                    if(getHabitStatusOnDate(habit.id, toYYYYMMDD(today)) === 'completed') completedCount++;
+                }
+            });
+
+            return `
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="bg-indigo-100 p-6 rounded-xl text-center">
+                        <h3 class="text-xl font-semibold text-gray-700 mb-2">Last 7 Days Mood</h3>
+                        <p class="text-5xl font-extrabold text-indigo-700">${avgMood}</p>
+                    </div>
+                     <div class="bg-green-100 p-6 rounded-xl text-center">
+                        <h3 class="text-xl font-semibold text-gray-700 mb-2">Today's Habits</h3>
+                        <p class="text-4xl font-extrabold"><span class="text-green-600">${completedCount}</span> / <span class="text-gray-800">${dueCount}</span></p>
+                    </div>
+                </div>
+                <div class="mt-8"><h3 class="text-2xl font-bold text-gray-800 mb-4">Today's Habits</h3><div id="daily-habits-container" class="space-y-3">${renderDailyHabitsList()}</div></div>
+                <div class="mt-8"><h3 class="text-2xl font-bold text-gray-800 mb-4">Recent Mood Logs</h3><div id="recent-moods-container" class="space-y-3">${renderMoodLogsList(5)}</div></div>
+            `;
+        }
+
+        function renderMoodLoggingPage() {
+            moodInsightOutput.innerHTML = '';
+            moodInsightOutput.classList.add('hidden');
+
+            return `
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div class="bg-gray-50 p-6 rounded-xl">
+                        <h2 class="text-2xl font-bold mb-6">How are you feeling?</h2>
+                        <div class="space-y-6">
+                            <div>
+                                <label for="mood-slider" class="block text-lg font-medium text-center">
+                                    Overall Mood: <span id="mood-value" class="text-indigo-600 font-semibold">5</span>
+                                    <span id="mood-emoji" class="text-5xl block mt-2">${MOOD_EMOJIS[4]}</span>
+                                </label>
+                                <input type="range" id="mood-slider" min="1" max="10" value="5" class="w-full mt-4">
+                            </div>
+                            <div>
+                                <label for="mood-notes" class="block text-sm font-medium text-gray-700">Journal Entry</label>
+                                <textarea id="mood-notes" rows="4" class="mt-1 block w-full border border-gray-300 rounded-md p-2" placeholder="What's on your mind?"></textarea>
+                            </div>
+                            <button id="log-mood-btn" class="w-full bg-indigo-600 text-white font-semibold py-3 rounded-lg hover:bg-indigo-700">Log Mood</button>
+                            <button id="get-mood-insight-btn" class="w-full bg-blue-600 text-white font-semibold py-3 rounded-lg hover:bg-blue-700 mt-2">✨Get Journal Insight</button>
+                            <div id="mood-insight-container"></div>
+                        </div>
+                    </div>
+                    <div><h2 class="text-2xl font-bold mb-6">Mood History</h2><div id="mood-log-list-full" class="space-y-3 max-h-[60vh] overflow-y-auto no-scrollbar">${renderMoodLogsList()}</div></div>
+                </div>`;
+        }
+        
+        function renderMoodLogsList(limit = 0) {
+            if (moodLogs.length === 0) return `<p class="text-gray-500 text-center py-4">No moods logged yet.</p>`;
+            const sortedMoods = [...moodLogs].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            const toRender = limit > 0 ? sortedMoods.slice(0, limit) : sortedMoods;
+            return toRender.map(log => {
+                const moodColor = getMoodColor(log.moodLevel);
+                const textColor = getTextColorForBackground(moodColor);
+                return `
+                    <div class="p-4 rounded-lg flex items-center gap-4" style="background-color: ${moodColor}; color: ${textColor};">
+                        <span class="text-4xl">${MOOD_EMOJIS[log.moodLevel - 1]}</span>
+                        <div class="flex-grow">
+                            <p class="font-bold">Mood: ${log.moodLevel}/10</p>
+                            <p class="text-sm opacity-90">${formatDateTime(log.timestamp)}</p>
+                            ${log.notes ? `<p class="text-sm mt-1 italic">"${log.notes}"</p>` : ''}
+                        </div>
+                        <button class="delete-mood-btn p-2 hover:bg-black/20 rounded-full" data-id="${log.id}">${SVG_ICONS.trash}</button>
+                    </div>`;
+            }).join('');
+        }
+
+        function renderHabitTrackingPage() {
+            return `
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold">Your Habits</h2>
+                    <button id="add-new-habit-btn" class="flex items-center gap-2 bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-indigo-700">
+                        ${SVG_ICONS.plus}<span>Add Habit</span>
+                    </button>
+                </div>
+                <div id="habits-list-container" class="space-y-4">${renderHabitsList()}</div>`;
+        }
+
+        function renderHabitsList() {
+            if(habits.length === 0) return `<p class="text-gray-500 text-center py-8">No habits yet. Click 'Add Habit' to start!'</p>`;
+            const sortedHabits = [...habits].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+            return sortedHabits.map(habit => `
+                <div class="rounded-lg p-4 flex items-center gap-4 ${getTextColorForBackground(habit.color)}" style="background-color: ${habit.color};">
+                    <div class="flex-grow">
+                        <p class="font-bold text-lg">${habit.name}</p>
+                        <p class="text-sm opacity-90">${habit.frequency === 'daily' ? 'Daily' : `On: ${habit.days.join(', ')}`}</p>
+                        ${habit.habitReminderTime ? `<p class="text-xs opacity-80">Reminder: ${habit.habitReminderTime}</p>` : ''}
+                    </div>
+                    <div class="flex items-center gap-2 text-orange-400 font-bold">
+                        ${SVG_ICONS.fire} <span>${habitStreaks[habit.id] || 0}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button class="edit-habit-btn p-2 rounded-full hover:bg-black/20" data-id="${habit.id}">${SVG_ICONS.edit}</button>
+                        <button class="delete-habit-btn p-2 rounded-full hover:bg-black/20" data-id="${habit.id}">${SVG_ICONS.trash}</button>
+                    </div>
+                </div>`).join('');
+        }
+        
+        function renderDailyHabitsList() {
+            const today = new Date();
+            const habitsDue = habits.filter(h => isHabitDueOn(h, today));
+            if(habitsDue.length === 0) return `<p class="text-gray-500 text-center py-4">No habits due today.</p>`;
+            return habitsDue.map(habit => {
+                const status = getHabitStatusOnDate(habit.id, toYYYYMMDD(today));
+                return `
+                    <div class="p-3 rounded-lg flex items-center gap-4 border border-gray-200">
+                        <div class="w-3 h-3 rounded-full" style="background-color:${habit.color};"></div>
+                        <p class="flex-grow font-semibold">${habit.name}</p>
+                        <div class="flex gap-1">
+                            <button class="habit-status-btn px-3 py-1 text-sm rounded-md ${status === 'completed' ? 'bg-green-500 text-white' : 'bg-gray-200'}" data-habit-id="${habit.id}" data-status="completed">Done</button>
+                            <button class="habit-status-btn px-3 py-1 text-sm rounded-md ${status === 'skipped' ? 'bg-yellow-500 text-white' : 'bg-gray-200'}" data-habit-id="${habit.id}" data-status="skipped">Skip</button>
+                        </div>
+                    </div>`;
+            }).join('');
+        }
+
+        function renderHydrationPage() {
+            const percentage = dailyWaterNeed > 0 ? ((dailyIntake / dailyWaterNeed) * 100).toFixed(0) : 0;
+            const statusColor = percentage >= 100 ? 'text-green-600' : 'text-orange-500';
+
+            return `
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <!-- Water Need Calculation Section -->
+                    <div class="bg-gray-50 p-6 rounded-xl">
+                        <h2 class="text-2xl font-bold mb-6">Calculate Daily Water Need</h2>
+                        <form id="water-need-form" class="space-y-4">
+                            <div>
+                                <label for="user-age" class="block text-sm font-medium text-gray-700">Age (years)</label>
+                                <input type="number" id="user-age" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" placeholder="e.g., 30" min="1" max="120">
+                            </div>
+                            <div>
+                                <label for="user-weight" class="block text-sm font-medium text-gray-700">Weight (kg)</label>
+                                <input type="number" id="user-weight" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" placeholder="e.g., 70" min="10" max="300">
+                            </div>
+                            <div>
+                                <label for="activity-level" class="block text-sm font-medium text-gray-700">Activity Level</label>
+                                <select id="activity-level" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                                    <option value="sedentary">Sedentary (little to no exercise)</option>
+                                    <option value="lightly_active">Lightly Active (light exercise/sports 1-3 days/week)</option>
+                                    <option value="moderately_active">Moderately Active (moderate exercise/sports 3-5 days/week)</option>
+                                    <option value="very_active">Very Active (hard exercise/sports 6-7 days/week)</option>
+                                    <option value="extra_active">Extra Active (very hard exercise/physical job)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="climate" class="block text-sm font-medium text-gray-700">Climate</label>
+                                <select id="climate" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2">
+                                    <option value="temperate">Temperate</option>
+                                    <option value="hot_humid">Hot & Humid</option>
+                                    <option value="hot_dry">Hot & Dry</option>
+                                    <option value="cold">Cold</option>
+                                </select>
+                            </div>
+                            <button type="button" id="calculate-water-need-btn" class="w-full bg-indigo-600 text-white font-semibold py-3 rounded-lg hover:bg-indigo-700">Calculate My Water Need</button>
+                            <div id="water-need-output" class="bg-blue-100 text-blue-800 p-3 rounded-md mt-4 hidden"></div>
+                        </form>
+                    </div>
+
+                    <!-- Water Intake Tracking Section -->
+                    <div class="bg-gray-50 p-6 rounded-xl">
+                        <h2 class="2xl font-bold mb-6">Today's Hydration</h2>
+                        <div class="text-center mb-6">
+                            <p class="text-xl font-semibold text-gray-700">Daily Goal: <span id="display-water-need" class="text-indigo-600">${dailyWaterNeed} ml</span></p>
+                            <p class="text-sm text-gray-500 italic mb-2">AI-generated estimate. Consult a medical professional for personalized advice.</p>
+                            <p class="text-xl font-semibold text-gray-700">Current Intake: <span id="display-current-intake" class="text-green-600">${dailyIntake} ml</span></p>
+                            <p class="text-lg font-semibold ${statusColor}" id="hydration-percentage-text">${percentage}% fulfilled</p>
+                        </div>
+                        <div class="relative h-64 w-64 mx-auto mb-6">
+                            <canvas id="hydration-chart"></canvas>
+                        </div>
+                        <div class="space-y-4">
+                            ${Object.keys(BEVERAGE_WATER_EQUIVALENT).map(type => `
+                                <div class="flex items-center gap-2">
+                                    <label for="log-${type}-qty" class="capitalize flex-grow text-sm font-medium text-gray-700">${type.replace('-', ' ')} (ml)</label>
+                                    <input type="number" id="log-${type}-qty" class="w-24 border border-gray-300 rounded-md shadow-sm p-2" value="250" min="1">
+                                    <button class="log-drink-btn px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600" data-drink-type="${type}">Log</button>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderSleepTrackingPage() {
+            // sleepAnalysisOutput.innerHTML = ''; // Not needed here anymore
+            // sleepAnalysisOutput.classList.add('hidden'); // Not needed here anymore
+            return `
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div class="bg-gray-50 p-6 rounded-xl">
+                        <h2 class="text-2xl font-bold mb-6">Log Your Sleep</h2>
+                        <div class="space-y-6">
+                            <div>
+                                <label for="sleep-date" class="block text-sm font-medium text-gray-700">Date</label>
+                                <input type="date" id="sleep-date" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" value="${toYYYYMMDD(new Date())}">
+                            </div>
+                            <div class="flex gap-4">
+                                <div class="flex-1">
+                                    <label for="sleep-hours" class="block text-sm font-medium text-gray-700">Hours</label>
+                                    <input type="number" id="sleep-hours" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" min="0" max="24" value="8">
+                                </div>
+                                <div class="flex-1">
+                                    <label for="sleep-minutes" class="block text-sm font-medium text-gray-700">Minutes</label>
+                                    <input type="number" id="sleep-minutes" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2" min="0" max="59" value="0">
+                                </div>
+                            </div>
+                            <div>
+                                <label for="sleep-abnormalities" class="block text-sm font-medium text-gray-700">Sleep Abnormalities / Notes</label>
+                                <textarea id="sleep-abnormalities" rows="4" class="mt-1 block w-full border border-gray-300 rounded-md p-2" placeholder="e.g., Woke up twice, had vivid dreams"></textarea>
+                            </div>
+                            <button id="log-sleep-btn" class="w-full bg-indigo-600 text-white font-semibold py-3 rounded-lg hover:bg-indigo-700">Log Sleep</button>
+                            <!-- Removed the 'Get Sleep Analysis' button here as analysis will be automatic -->
+                            <div id="sleep-logging-status" class="bg-blue-100 text-blue-800 p-3 rounded-md mt-4 hidden"></div>
+                        </div>
+                    </div>
+                    <div><h2 class="text-2xl font-bold mb-6">Sleep History</h2><div id="sleep-log-list" class="space-y-3 max-h-[60vh] overflow-y-auto no-scrollbar">${renderSleepLogsList()}</div></div>
+                </div>`;
+        }
+
+        function renderSleepLogsList() {
+            if (sleepLogs.length === 0) return `<p class="text-gray-500 text-center py-4">No sleep logs yet.</p>`;
+            const sortedSleeps = [...sleepLogs].sort((a, b) => new Date(b.date) - new Date(a.date));
+            return sortedSleeps.map(log => `
+                <div class="p-4 rounded-lg bg-white shadow-sm border border-gray-200">
+                    <div class="flex justify-between items-center mb-2">
+                        <p class="font-bold text-lg">${toYYYYMMDD(log.date)}</p>
+                        <button class="delete-sleep-log-btn text-gray-400 hover:text-gray-600" data-id="${log.id}">${SVG_ICONS.trash}</button>
+                    </div>
+                    <p class="text-gray-700">Duration: ${log.duration} hours</p>
+                    ${log.abnormalities ? `<p class="text-sm italic text-gray-600 mt-1">Notes: "${log.abnormalities}"</p>` : ''}
+                    ${log.analysis ? `<div class="bg-blue-50 text-blue-800 p-2 text-sm rounded-md mt-2">AI Analysis: ${marked.parse(log.analysis || '')}</div>` : ''}
+                    ${log.analysis === null && log.abnormalities ? `<div id="sleep-analysis-loading-${log.id}" class="bg-yellow-100 text-yellow-800 p-2 text-sm rounded-md mt-2 loading-text">Generating analysis...</div>` : ''}
+                </div>`).join('');
+        }
+
+
+        function renderBreathHelperPage() {
+            return `
+                <div class="flex flex-col items-center justify-center p-6 bg-gray-50 rounded-xl max-w-lg mx-auto shadow-md">
+                    <h2 class="text-2xl font-bold text-center mb-6">Guided Breathing</h2>
+                    <div id="breathing-circle" class="breathing-circle-container">
+                        <span id="breathing-text" class="breathing-text">Start</span>
+                    </div>
+                    <div class="flex flex-wrap justify-center gap-4 mt-6 w-full">
+                        <div class="flex-1 min-w-[100px] max-w-[150px]">
+                            <label for="inhale-duration-input" class="block text-sm font-medium text-gray-700">Inhale (s)</label>
+                            <input type="number" id="inhale-duration-input" min="1" value="4" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 text-center">
+                        </div>
+                        <div class="flex-1 min-w-[100px] max-w-[150px]">
+                            <label for="hold-duration-input" class="block text-sm font-medium text-gray-700">Hold (s)</label>
+                            <input type="number" id="hold-duration-input" min="0" value="4" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 text-center">
+                        </div>
+                        <div class="flex-1 min-w-[100px] max-w-[150px]">
+                            <label for="exhale-duration-input" class="block text-sm font-medium text-gray-700">Exhale (s)</label>
+                            <input type="number" id="exhale-duration-input" min="1" value="4" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 text-center">
+                        </div>
+                    </div>
+                    <div class="mt-6 flex gap-4">
+                        <button id="start-breathing-btn" class="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700">Start Breathing</button>
+                        <button id="stop-breathing-btn" class="px-6 py-3 bg-red-500 text-white font-semibold rounded-lg hover:bg-red-600">Stop</button>
+                        <button id="log-breathing-session-btn" class="px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700">Log Session</button>
+                    </div>
+                    <div class="mt-8 w-full">
+                        <h3 class="text-xl font-semibold mb-4 text-gray-800 text-center">Breathing Session History</h3>
+                        <div id="breathing-log-list" class="space-y-3 max-h-[40vh] overflow-y-auto no-scrollbar">
+                            ${renderBreathLogsList()}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderBreathLogsList() {
+            if (breathLogs.length === 0) return `<p class="text-gray-500 text-center py-4">No breathing sessions logged yet.</p>`;
+            const sortedLogs = [...breathLogs].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            return sortedLogs.map(log => `
+                <div class="p-3 rounded-lg bg-white shadow-sm border border-gray-200 flex justify-between items-center">
+                    <div>
+                        <p class="font-semibold">${formatDateTime(log.timestamp)}</p>
+                        <p class="text-sm text-gray-600">Pattern: Inhale ${log.inhaleDuration}s, Hold ${log.holdDuration}s, Exhale ${log.exhaleDuration}s</p>
+                        <p class="text-sm text-gray-600">Total Session Duration: ${log.elapsedTime ? log.elapsedTime.toFixed(1) : 'N/A'} seconds</p>
+                    </div>
+                    <button class="delete-breath-log-btn text-gray-400 hover:text-gray-600" data-id="${log.id}">${SVG_ICONS.trash}</button>
+                </div>
+            `).join('');
+        }
+
+        function renderCalendarView(date) {
+            const month = date.getMonth(), year = date.getFullYear();
+            const firstDay = new Date(year, month, 1), lastDay = new Date(year, month + 1, 0);
+            let dayCells = Array(firstDay.getDay()).fill('<div class="calendar-day border border-gray-200 bg-gray-50"></div>').join('');
+
+            for (let i = 1; i <= lastDay.getDate(); i++) {
+                const dayDate = new Date(year, month, i), dateKey = toYYYYMMDD(dayDate);
+                const moodsToday = moodLogs.filter(log => toYYYYMMDD(new Date(log.timestamp)) === dateKey);
+                const avgMood = moodsToday.length ? moodsToday.reduce((s, l) => s + l.moodLevel, 0) / moodsToday.length : null;
+                let habitDots = habits.map(h => dailyHabitStatuses[h.id]?.[dateKey] === 'completed' ? `<div class="w-2 h-2 rounded-full" style="background-color:${h.color}" title="${h.name}"></div>` : '').join('');
+                
+                let moodIndicator = '';
+                if(avgMood) {
+                    moodIndicator = `
+                        <span class="2xl" title="Avg Mood: ${avgMood.toFixed(1)}">
+                            ${MOOD_EMOJIS[Math.round(avgMood) - 1]}
+                        </span>
+                    `;
+                }
+
+                dayCells += `
+                    <div class="calendar-day border border-gray-200 p-2 ${toYYYYMMDD(new Date()) === dateKey ? 'calendar-day-today' : ''}" style="${avgMood ? `background-color: ${getMoodColor(avgMood)}` : ''}">
+                        <div class="flex justify-between items-start">
+                            <div class="font-semibold ${avgMood ? getTextColorForBackground(getMoodColor(avgMood)) : ''}">${i}</div>
+                            ${moodIndicator}
+                        </div>
+                        <div class="flex flex-wrap gap-1 mt-2">${habitDots}</div>
+                    </div>`;
+            }
+
+            return `
+                <div class="bg-white p-4 sm:p-6 rounded-xl">
+                    <div class="flex justify-between items-center mb-4">
+                        <button class="calendar-nav-btn px-3 py-1 rounded bg-gray-200" data-direction="-1">&lt; Prev</button>
+                        <h2 class="text-xl font-bold">${date.toLocaleString('default', { month: 'long', year: 'numeric' })}</h2>
+                        <button class="calendar-nav-btn px-3 py-1 rounded bg-gray-200" data-direction="1">Next &gt;</button>
+                    </div>
+                    <div class="calendar-grid text-center font-semibold text-gray-600 mb-2">
+                        ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => `<div>${d}</div>`).join('')}
+                    </div>
+                    <div class="calendar-grid">${dayCells}</div>
+                </div>`;
+        }
+
+        function renderAnalyticsPage() {
+            const periods = [
+                { value: '7days', label: '7 Days' },
+                { value: '30days', label: '30 Days' },
+                { value: '90days', label: '90 Days' },
+                { value: '180days', label: '180 Days' },
+                { value: '360days', label: '360 Days' },
+                { value: 'alldays', label: 'All Time' }
+            ];
+
+            const renderFilterButtons = (chartType, initialActivePeriod = '7days') => `
+                <div class="flex flex-wrap justify-center gap-2 mb-4">
+                    ${periods.map(p => `
+                        <button class="analytics-filter-btn px-3 py-1 rounded bg-gray-200 ${p.value === initialActivePeriod ? 'active' : ''}" data-chart="${chartType}" data-period="${p.value}">${p.label}</button>
+                    `).join('')}
+                </div>
+            `;
+
+            return `
+                <div class="space-y-8">
+                    <div class="bg-gray-50 p-6 rounded-xl">
+                        <h3 class="text-xl font-semibold mb-4 text-center">Summary Statistics</h3>
+                        ${renderFilterButtons('summary', '7days')}
+                        <div id="summary-statistics-container" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <!-- Summary stats will be rendered here by renderSummaryStatistics -->
+                        </div>
+                    </div>
+
+                    <div class="bg-gray-50 p-6 rounded-xl">
+                        <h3 class="text-xl font-semibold mb-4 text-center">Mood & Habit Insights</h3>
+                        ${renderFilterButtons('correlation-insights', '7days')}
+                        <div id="insights-container">${renderCorrelationInsights('7days')}</div>
+                    </div>
+
+                    <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                        <div class="bg-white p-6 rounded-xl shadow-md">
+                            <h3 class="text-xl font-semibold mb-4 text-center">Mood Trend</h3>
+                            ${renderFilterButtons('mood')}
+                            <div class="relative h-80"><canvas id="mood-trend-chart"></canvas></div>
+                        </div>
+                        <div class="bg-white p-6 rounded-xl shadow-md">
+                            <h3 class="text-xl font-semibold mb-4 text-center">Habit Completion</h3>
+                            ${renderFilterButtons('habit')}
+                            <div class="relative h-80"><canvas id="habit-completion-chart"></canvas></div>
+                        </div>
+                        <div class="bg-white p-6 rounded-xl shadow-md">
+                            <h3 class="text-xl font-semibold mb-4 text-center">Sleep Duration</h3>
+                            ${renderFilterButtons('sleep')}
+                            <div class="relative h-80"><canvas id="sleep-trend-chart"></canvas></div>
+                        </div>
+                        <div class="bg-white p-6 rounded-xl shadow-md">
+                            <h3 class="text-xl font-semibold mb-4 text-center">Hydration Intake</h3>
+                            ${renderFilterButtons('hydration')}
+                            <div class="relative h-80"><canvas id="hydration-analytics-chart"></canvas></div>
+                        </div>
+                        <div class="bg-white p-6 rounded-xl shadow-md">
+                            <h3 class="text-xl font-semibold mb-4 text-center">Breathing Sessions</h3>
+                            ${renderFilterButtons('breath')}
+                            <div class="relative h-80"><canvas id="breath-trend-chart"></canvas></div>
+                        </div>
+                    </div>
+                </div>`;
+        }
+
+        function renderRecommendationsPage() {
+            return `
+                <div class="bg-gray-50 p-6 rounded-xl">
+                    <h2 class="text-2xl font-bold mb-6 text-center">Personalized Recommendations</h2>
+                    <div class="flex flex-wrap justify-center gap-2 mb-4" id="recommendations-filter-buttons">
+                        <button class="recommendation-filter-btn px-3 py-1 rounded bg-gray-200" data-period="today">Today</button>
+                        <button class="recommendation-filter-btn px-3 py-1 rounded bg-gray-200" data-period="3days">Last 3 Days</button>
+                        <button class="recommendation-filter-btn px-3 py-1 rounded bg-gray-200 active" data-period="7days">Last 7 Days</button>
+                        <button class="recommendation-filter-btn px-3 py-1 rounded bg-gray-200" data-period="30days">Last 30 Days</button>
+                        <button class="recommendation-filter-btn px-3 py-1 rounded bg-gray-200" data-period="90days">Last 90 Days</button>
+                        <button class="recommendation-filter-btn px-3 py-1 rounded bg-gray-200" data-period="180days">Last 180 Days</button>
+                        <button class="recommendation-filter-btn px-3 py-1 rounded bg-gray-200" data-period="360days">Last 360 Days</button>
+                        <button class="recommendation-filter-btn px-3 py-1 rounded bg-gray-200" data-period="alldays">All Time</button>
+                    </div>
+                    <div id="recommendations-output" class="bg-blue-100 text-blue-800 p-4 rounded-md hidden loading-text">
+                        Generating recommendations based on your data...
+                    </div>
+                    <div id="recommendations-content" class="space-y-4 mt-4">
+                        <p class="text-gray-600 text-center">Select a period or click 'Generate Recommendations' to get personalized insights.</p>
+                    </div>
+                     <div class="flex justify-center mt-6">
+                        <button id="generate-recommendations-btn" class="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700">
+                            ✨ Regenerate Recommendations
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+
+        // --- Data Handling & Business Logic ---
+        const getHabitStatusOnDate = (habitId, dateKey) => dailyHabitStatuses[habitId]?.[dateKey] || 'pending';
+        const isHabitDueOn = (habit, date) => {
+            const dateKey = toYYYYMMDD(date);
+            if ((habit.startDate && dateKey < habit.startDate) || (habit.endDate && dateKey > habit.endDate)) return false;
+            if (habit.frequency === 'daily') return true;
+            return habit.days.includes(date.toLocaleDateString('en-US', { weekday: 'short' }));
+        };
+        const calculateHabitStreaks = () => {
+            habits.forEach(habit => {
+                let currentStreak = 0;
+                let date = new Date();
+                while (true) {
+                    if (!isHabitDueOn(habit, date)) {
+                        date.setDate(date.getDate() - 1);
+                        continue;
+                    }
+                    if (getHabitStatusOnDate(habit.id, toYYYYMMDD(date)) === 'completed') {
+                        currentStreak++;
+                        date.setDate(date.getDate() - 1);
+                    } else {
+                        break;
+                    }
+                }
+                habitStreaks[habit.id] = currentStreak;
+            });
+        };
+
+        function renderCorrelationInsights(period = '7days') {
+            const { filteredMoodLogs, filteredHabitsWithStatus, filteredSleepLogs } = getFilteredDataByPeriod(period);
+
+            if (filteredHabitsWithStatus.length === 0 || filteredMoodLogs.length === 0) {
+                return '<p class="text-center text-gray-500">Log more data for correlation insights.</p>';
+            }
+
+            const insights = [];
+
+            // Mood and Habit correlation
+            habits.forEach(habit => {
+                const moodsCompleted = [], moodsNotCompleted = [];
+                const habitDates = filteredHabitsWithStatus.filter(item => item.habitId === habit.id);
+
+                habitDates.forEach(habitStatus => {
+                    const moodForDate = filteredMoodLogs.find(log => toYYYYMMDD(log.timestamp) === habitStatus.date);
+                    if (moodForDate) {
+                        if (habitStatus.status === 'completed') {
+                            moodsCompleted.push(moodForDate.moodLevel);
+                        } else if (habitStatus.status === 'skipped') {
+                            moodsNotCompleted.push(moodForDate.moodLevel);
+                        }
+                    }
+                });
+
+                if (moodsCompleted.length > 0) {
+                    const avgCompleted = moodsCompleted.reduce((a, b) => a + b, 0) / moodsCompleted.length;
+                    let insightText = `When you **${habit.name}**, your average mood is **${avgCompleted.toFixed(1)}**/10.`;
+                    
+                    if (moodsNotCompleted.length > 0) {
+                        const avgNotCompleted = moodsNotCompleted.reduce((a, b) => a + b, 0) / moodsNotCompleted.length;
+                        if (Math.abs(avgCompleted - avgNotCompleted) > 0.5) { // Threshold for significant difference
+                            insightText += ` This is **${Math.abs(avgCompleted - avgNotCompleted).toFixed(1)}** points ${avgCompleted > avgNotCompleted ? 'higher' : 'lower'} than when you didn't complete it.`;
+                        }
+                    }
+                    insights.push(insightText);
+                }
+            });
+
+            // Mood and Sleep correlation
+            if (filteredSleepLogs.length > 0 && filteredMoodLogs.length > 0) {
+                const moodAfterGoodSleep = [];
+                const moodAfterPoorSleep = [];
+
+                filteredSleepLogs.forEach(sleepLog => {
+                    const moodOnDayAfterSleep = filteredMoodLogs.find(mood => {
+                        const sleepDate = new Date(sleepLog.date);
+                        const moodDate = new Date(mood.timestamp);
+                        // Check if mood log is on the day immediately following the sleep log
+                        return toYYYYMMDD(moodDate) === toYYYYMMDD(new Date(sleepDate.setDate(sleepDate.getDate() + 1)));
+                    });
+
+                    if (moodOnDayAfterSleep) {
+                        if (sleepLog.duration >= 7) { // Assuming 7+ hours is "good" sleep
+                            moodAfterGoodSleep.push(moodOnDayAfterGoodSleep.moodLevel);
+                        } else { // Less than 7 hours is "poor" sleep
+                            moodAfterPoorSleep.push(moodOnDayAfterGoodSleep.moodLevel);
+                        }
+                    }
+                });
+
+                if (moodAfterGoodSleep.length > 0) {
+                    const avgMoodGoodSleep = moodAfterGoodSleep.reduce((a, b) => a + b, 0) / moodAfterGoodSleep.length;
+                    let insightText = `On days following good sleep (7+ hours), your average mood is **${avgMoodGoodSleep.toFixed(1)}**/10.`;
+                    
+                    if (moodAfterPoorSleep.length > 0) {
+                        const avgMoodPoorSleep = moodAfterPoorSleep.reduce((a, b) => a + b, 0) / moodAfterPoorSleep.length;
+                        if (Math.abs(avgMoodGoodSleep - avgMoodPoorSleep) > 0.5) {
+                            insightText += ` This is **${Math.abs(avgMoodGoodSleep - avgMoodPoorSleep).toFixed(1)}** points ${avgMoodGoodSleep > avgMoodPoorSleep ? 'higher' : 'lower'} than after poor sleep.`;
+                        }
+                    }
+                    insights.push(insightText);
+                }
+            }
+
+
+            return insights.length ? `<div class="space-y-3">${insights.map(i => `<div class="p-4 bg-white rounded-lg shadow-sm">${marked.parse(i)}</div>`).join('')}</div>` : '<p class="text-center text-gray-500">Not enough data for correlations in this period.</p>';
+        }
+
+
+        async function handleLogMood() {
+            console.log("Attempting to log mood...");
+            const moodLevel = parseInt(document.getElementById('mood-slider').value);
+            const notes = document.getElementById('mood-notes').value.trim();
+            moodLogs.push({ id: generateUniqueId(), moodLevel, notes, timestamp: new Date().toISOString() }); 
+            saveData();
+            document.getElementById('mood-slider').value = 5;
+            document.getElementById('mood-notes').value = '';
+            moodInsightOutput.innerHTML = '';
+            moodInsightOutput.classList.add('hidden');
+            renderContentForSection('mood-logging-section'); 
+            renderContentForSection('dashboard-section'); 
+            console.log("Mood logged:", moodLogs[moodLogs.length - 1]);
+        }
+
+        function openHabitModal(habit = null) {
+            const form = document.getElementById('habit-form');
+            form.reset();
+            document.getElementById('specific-days-container').classList.remove('expanded');
+            habitSuggestionsOutput.innerHTML = ''; 
+            habitSuggestionsOutput.classList.add('hidden'); // Ensure it's hidden when opening the modal initially or for edit
+            habitSuggestionsOutput.classList.remove('loading-text'); 
+            
+            if (habit) {
+                document.getElementById('habit-modal-title').textContent = 'Edit Habit';
+                form.querySelector('#habit-id').value = habit.id;
+                form.querySelector('#new-habit-name').value = habit.name;
+                form.querySelector('#habit-frequency').value = habit.frequency;
+                form.querySelector('#habit-start-date').value = habit.startDate || '';
+                form.querySelector('#habit-end-date').value = habit.endDate || '';
+                form.querySelector('#habit-color-picker').value = habit.color;
+                form.querySelector('#habit-reminder-time').value = habit.habitReminderTime || ''; 
+                if (habit.frequency === 'specific-days') {
+                    document.getElementById('specific-days-container').classList.add('expanded');
+                    document.querySelectorAll('#specific-days-container input').forEach(cb => cb.checked = habit.days.includes(cb.value));
+                }
+            } else {
+                document.getElementById('habit-modal-title').textContent = 'Add New Habit';
+                form.querySelector('#habit-color-picker').value = `#${Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')}`;
+                form.querySelector('#habit-reminder-time').value = ''; 
+            }
+            toggleModal(habitModal, true);
+        }
+
+        async function handleHabitFormSubmit(e) {
+            e.preventDefault();
+            console.log("Habit form submitted.");
+            const id = e.target.querySelector('#habit-id').value;
+            const habitData = {
+                name: e.target.querySelector('#new-habit-name').value.trim(),
+                frequency: e.target.querySelector('#habit-frequency').value,
+                days: Array.from(e.target.querySelectorAll('#specific-days-container input:checked')).map(cb => cb.value),
+                startDate: e.target.querySelector('#habit-start-date').value || null,
+                endDate: e.target.querySelector('#habit-end-date').value || null,
+                color: e.target.querySelector('#habit-color-picker').value,
+                habitReminderTime: e.target.querySelector('#habit-reminder-time').value || null, 
+                createdAt: new Date().toISOString() 
+            };
+            if(!habitData.name) {
+                console.warn("Habit name is empty. Not saving.");
+                return;
+            }
+
+            if (id) {
+                const index = habits.findIndex(h => h.id === id);
+                if (index !== -1) {
+                    habits[index] = { ...habits[index], ...habitData };
+                    console.log("Habit updated:", habits[index]);
+                }
+            } else {
+                const newHabit = { id: generateUniqueId(), ...habitData };
+                habits.push(newHabit);
+                console.log("New habit added:", newHabit);
+            }
+            saveData();
+            toggleModal(habitModal, false);
+            renderContentForSection('habit-tracking-section'); 
+            renderContentForSection('dashboard-section'); 
+        }
+        
+        async function deleteHabit(id) {
+            habits = habits.filter(h => h.id !== id);
+            delete dailyHabitStatuses[id]; 
+            saveData();
+            renderContentForSection('habit-tracking-section');
+            renderContentForSection('dashboard-section');
+            renderContentForSection('calendar-section');
+            renderContentForSection('analytics-section');
+        }
+
+        async function handleHabitStatusUpdate(habitId, status) {
+            console.log(`Updating status for habit ${habitId} to ${status}`);
+            const todayKey = toYYYYMMDD(new Date());
+            if (!dailyHabitStatuses[habitId]) {
+                dailyHabitStatuses[habitId] = {};
+            }
+            dailyHabitStatuses[habitId][todayKey] = (dailyHabitStatuses[habitId][todayKey] === status) ? 'pending' : status;
+            saveData();
+            
+            if (dailyHabitStatuses[habitId][todayKey] === 'completed') {
+                const habit = habits.find(h => h.id === habitId);
+                if (habit) showHabitNotification(habit.name);
+            }
+            renderContentForSection('dashboard-section'); 
+            console.log("Daily habit statuses:", dailyHabitStatuses);
+        }
+        
+        // --- Charting ---
+        function renderChart(canvasId, type, period) {
+            let chartInstance;
+            switch(canvasId) {
+                case 'mood-trend-chart': chartInstance = moodChartInstance; break;
+                case 'habit-completion-chart': chartInstance = habitChartInstance; break;
+                case 'sleep-trend-chart': chartInstance = sleepChartInstance; break;
+                case 'hydration-analytics-chart': chartInstance = hydrationChartInstance; break;
+                case 'breath-trend-chart': chartInstance = breathChartInstance; break;
+            }
+            if (chartInstance) chartInstance.destroy();
+            
+            const canvas = document.getElementById(canvasId);
+            if(!canvas) return;
+            const ctx = canvas.getContext('2d');
+            
+            const { labels, datasets, noData } = getChartData(period, type);
+            
+            const noDataP = canvas.parentElement.querySelector('.chart-no-data');
+            if (noData) {
+                if(!noDataP) {
+                    const p = document.createElement('p');
+                    p.className = 'chart-no-data absolute inset-0 flex items-center justify-center text-gray-500';
+                    p.textContent = 'No data for this period.';
+                    canvas.parentElement.appendChild(p);
+                }
+                return;
+            } else if(noDataP) {
+                 noDataP.remove();
+            }
+
+            const chartConfig = {
+                type: (type === 'mood' || type === 'sleep' || type === 'hydration-total') ? 'line' : 'bar',
+                data: { labels, datasets: Object.values(datasets) },
+                options: { responsive: true, maintainAspectRatio: false }
+            };
+
+            if(type === 'mood') {
+                chartConfig.options.scales = { y: { min: 1, max: 10 } };
+                moodChartInstance = new Chart(ctx, chartConfig);
+            } else if (type === 'habit') {
+                chartConfig.options.scales = { x: { stacked: true }, y: { stacked: true, beginAtZero: true } };
+                habitChartInstance = new Chart(ctx, chartConfig);
+            } else if (type === 'sleep') {
+                 chartConfig.options.scales = { y: { beginAtZero: true, title: { display: true, text: 'Hours' } } };
+                 sleepChartInstance = new Chart(ctx, chartConfig);
+            } else if (type === 'hydration') {
+                chartConfig.options.scales = { y: { beginAtZero: true, title: { display: true, text: 'Volume (ml)' } } };
+                hydrationChartInstance = new Chart(ctx, chartConfig);
+            } else if (type === 'breath') {
+                 chartConfig.options.scales = { y: { beginAtZero: true, title: { display: true, text: 'Seconds' } } };
+                 breathChartInstance = new Chart(ctx, chartConfig);
+            }
+        }
+        
+        const renderMoodTrendChart = (period) => renderChart('mood-trend-chart', 'mood', period);
+        const renderHabitCompletionChart = (period) => renderChart('habit-completion-chart', 'habit', period);
+        const renderSleepTrendChart = (period) => renderChart('sleep-trend-chart', 'sleep', period);
+        const renderHydrationTrendChart = (period) => renderChart('hydration-analytics-chart', 'hydration', period);
+        const renderBreathTrendChart = (period) => renderChart('breath-trend-chart', 'breath', period);
+
+        function getChartData(period, type) {
+            const now = new Date();
+            let startDate = new Date();
+            startDate.setHours(0, 0, 0, 0); // Normalize to start of day
+
+            if (period === 'today') {
+                // startDate is already set to today 00:00:00
+            } else if (period.endsWith('days')) {
+                const daysBack = parseInt(period.replace('days', ''));
+                startDate.setDate(now.getDate() - (daysBack - 1));
+                startDate.setHours(0, 0, 0, 0);
+            } else if (period === 'alldays') {
+                const allTimestamps = [
+                    ...moodLogs.map(l => new Date(l.timestamp).getTime()),
+                    ...sleepLogs.map(l => new Date(l.date).getTime()),
+                    ...breathLogs.map(l => new Date(l.timestamp).getTime())
+                ].filter(t => !isNaN(t));
+
+                const earliestHabitDate = Object.values(dailyHabitStatuses)
+                    .flatMap(habitDay => Object.keys(habitDay))
+                    .map(dateStr => new Date(dateStr).getTime())
+                    .filter(t => !isNaN(t))
+                    .sort((a,b) => a - b)[0];
+
+                if (earliestHabitDate) allTimestamps.push(earliestHabitDate);
+
+                if (allTimestamps.length > 0) {
+                    startDate = new Date(Math.min(...allTimestamps));
+                    startDate.setHours(0, 0, 0, 0);
+                } else {
+                    startDate = now; // No data, default to today
+                    startDate.setHours(0, 0, 0, 0);
+                }
+            }
+            
+            const labels = [];
+            const dataPoints = {};
+            let tempDate = new Date(startDate);
+            while (tempDate <= now) {
+                const dateKey = toYYYYMMDD(tempDate);
+                labels.push(tempDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+                dataPoints[dateKey] = {
+                    mood: { total: 0, count: 0 },
+                    habit: { completed: 0, skipped: 0 },
+                    sleep: { total: 0, count: 0 },
+                    hydration: { total: 0, goal: 0 },
+                    breath: { total: 0, count: 0 }
+                };
+                tempDate.setDate(tempDate.getDate() + 1);
+            }
+
+            let noData = true; // Flag to check if any data is present for the period
+
+            if(type === 'mood') {
+                moodLogs.forEach(log => {
+                    const dateKey = toYYYYMMDD(new Date(log.timestamp));
+                    if (dataPoints[dateKey]) { dataPoints[dateKey].mood.total += log.moodLevel; dataPoints[dateKey].mood.count++; noData = false; }
+                });
+                const data = Object.values(dataPoints).map(dp => dp.mood.count > 0 ? (dp.mood.total / dp.mood.count) : null);
+                return { labels, datasets: [{ label: 'Average Mood', data, borderColor: '#4F46E5', fill: true, tension: 0.3, spanGaps: true }], noData: data.every(d => d === null) };
+            } else if (type === 'habit') {
+                habits.forEach(habit => {
+                    Object.entries(dailyHabitStatuses[habit.id] || {}).forEach(([dateKey, status]) => {
+                        if (dataPoints[dateKey]) {
+                            if (status === 'completed') dataPoints[dateKey].habit.completed++;
+                            else if (status === 'skipped') dataPoints[dateKey].habit.skipped++;
+                            noData = false;
+                        }
+                    });
+                });
+                const completedData = Object.values(dataPoints).map(dp => dp.habit.completed);
+                const skippedData = Object.values(dataPoints).map(dp => dp.habit.skipped);
+                return { labels, datasets: { completed: { label: 'Completed', data: completedData, backgroundColor: '#10B981' }, skipped: { label: 'Skipped', data: skippedData, backgroundColor: '#F59E0B' } }, noData: completedData.every(d => d === 0) && skippedData.every(d => d === 0) };
+            } else if (type === 'sleep') {
+                sleepLogs.forEach(log => {
+                    const dateKey = toYYYYMMDD(new Date(log.date));
+                    if (dataPoints[dateKey]) { dataPoints[dateKey].sleep.total += log.duration; dataPoints[dateKey].sleep.count++; noData = false; }
+                });
+                const data = Object.values(dataPoints).map(dp => dp.sleep.count > 0 ? (dp.sleep.total / dp.sleep.count) : null);
+                return { labels, datasets: [{ label: 'Average Sleep Hours', data, borderColor: '#2563EB', fill: false, tension: 0.3, spanGaps: true }], noData: data.every(d => d === null) };
+            } else if (type === 'hydration') {
+                Object.entries(hydrationLogs).forEach(([dateKey, log]) => {
+                    if (dataPoints[dateKey]) { dataPoints[dateKey].hydration.total = log.totalIntake; noData = false; }
+                });
+                // Note: dailyWaterNeed is a single value, not per day log. We'll show it as a constant line if needed.
+                const totalIntakeData = Object.values(dataPoints).map(dp => dp.hydration.total);
+                const goalData = Array(labels.length).fill(dailyWaterNeed > 0 ? dailyWaterNeed : null); // Constant goal line
+                
+                const datasets = [
+                    { label: 'Daily Intake (ml)', data: totalIntakeData, borderColor: DRINK_COLORS['water'], fill: false, tension: 0.3, spanGaps: true },
+                ];
+                if (dailyWaterNeed > 0) {
+                    datasets.push({
+                        label: 'Daily Goal (ml)',
+                        data: goalData,
+                        borderColor: '#A5B4FC',
+                        borderDash: [5, 5],
+                        fill: false,
+                        pointRadius: 0
+                    });
+                }
+                return { labels, datasets, noData: totalIntakeData.every(d => d === 0) };
+
+            } else if (type === 'breath') {
+                breathLogs.forEach(log => {
+                    const dateKey = toYYYYMMDD(new Date(log.timestamp));
+                    if (dataPoints[dateKey]) { dataPoints[dateKey].breath.total += log.elapsedTime; dataPoints[dateKey].breath.count++; noData = false; }
+                });
+                const data = Object.values(dataPoints).map(dp => dp.breath.count > 0 ? (dp.breath.total / dp.breath.count) : null);
+                return { labels, datasets: [{ label: 'Average Session Duration (s)', data, borderColor: '#EF4444', fill: false, tension: 0.3, spanGaps: true }], noData: data.every(d => d === null) };
+            }
+            return { labels: [], datasets: {}, noData: true }; // Fallback
+        }
+        
+        async function checkAndResetHabits() {
+            if (hasResetBeenChecked || !habits.length) return;
+            hasResetBeenChecked = true;
+
+            const metadata = JSON.parse(localStorage.getItem(LS_METADATA) || '{}');
+            const lastResetTimestamp = metadata.lastReset ? new Date(metadata.lastReset) : null;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            if (!lastResetTimestamp || lastResetTimestamp.getTime() >= today.getTime()) {
+                localStorage.setItem(LS_METADATA, JSON.stringify({ ...metadata, lastReset: new Date().toISOString() }));
+                return;
+            }
+
+            let operations = 0;
+            let lastResetDate = new Date(lastResetTimestamp);
+            
+            for (let d = new Date(lastResetDate); d < today; d.setDate(d.getDate() + 1)) {
+                const dateKey = toYYYYMMDD(d);
+                habits.forEach(habit => {
+                    if (isHabitDueOn(habit, d)) {
+                        const status = getHabitStatusOnDate(habit.id, dateKey);
+                        if (status === 'pending') {
+                            if (!dailyHabitStatuses[habit.id]) {
+                                dailyHabitStatuses[habit.id] = {};
+                            }
+                            dailyHabitStatuses[habit.id][dateKey] = 'skipped';
+                            operations++;
+                        }
+                    }
+                });
+            }
+            
+            if(operations > 0) {
+                 saveData(); 
+            }
+            localStorage.setItem(LS_METADATA, JSON.stringify({ ...metadata, lastReset: new Date().toISOString() }));
+        }
+
+        // Renamed and modified to render summary into a specific container
+        function renderSummaryStatistics(period) {
+            const summary = getSummaryStatistics(period);
+            const container = document.getElementById('summary-statistics-container');
+            if (!container) return;
+
+            container.innerHTML = `
+                <div class="bg-white p-4 rounded-lg shadow-sm text-center">
+                    <p class="text-lg font-semibold text-gray-700">Avg Mood</p>
+                    <p class="text-3xl font-bold text-indigo-600">${summary.avgMood}</p>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow-sm text-center">
+                    <p class="text-lg font-semibold text-gray-700">Avg Sleep</p>
+                    <p class="text-3xl font-bold text-green-600">${summary.avgSleepHours} hrs</p>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow-sm text-center">
+                    <p class="text-lg font-semibold text-gray-700">Habit Comp.</p>
+                    <p class="text-3xl font-bold text-purple-600">${summary.habitCompletionRate}%</p>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow-sm text-center">
+                    <p class="text-lg font-semibold text-gray-700">Avg Hydration</p>
+                    <p class="text-3xl font-bold text-blue-600">${summary.avgDailyHydration} ml</p>
+                </div>
+                <div class="bg-white p-4 rounded-lg shadow-sm text-center">
+                    <p class="text-lg font-semibold text-gray-700">Avg Breath Session</p>
+                    <p class="text-3xl font-bold text-red-600">${summary.avgBreathSessionDuration} s</p>
+                </div>
+            `;
+        }
+
+
+        function getFilteredDataByPeriod(period) {
+            const now = new Date();
+            let startDate = new Date();
+            startDate.setHours(0, 0, 0, 0); // Normalize to start of day
+
+            if (period === 'today') {
+                // startDate is already set to today 00:00:00
+            } else if (period.endsWith('days')) {
+                const daysBack = parseInt(period.replace('days', ''));
+                startDate.setDate(now.getDate() - (daysBack - 1));
+                startDate.setHours(0, 0, 0, 0);
+            } else if (period === 'alldays') {
+                const allTimestamps = [
+                    ...moodLogs.map(l => new Date(l.timestamp).getTime()),
+                    ...sleepLogs.map(l => new Date(l.date).getTime()),
+                    ...breathLogs.map(l => new Date(l.timestamp).getTime())
+                ].filter(t => !isNaN(t));
+
+                const earliestHabitDate = Object.values(dailyHabitStatuses)
+                    .flatMap(habitDay => Object.keys(habitDay))
+                    .map(dateStr => new Date(dateStr).getTime())
+                    .filter(t => !isNaN(t))
+                    .sort((a,b) => a - b)[0];
+
+                if (earliestHabitDate) allTimestamps.push(earliestHabitDate);
+
+                if (allTimestamps.length > 0) {
+                    startDate = new Date(Math.min(...allTimestamps));
+                    startDate.setHours(0, 0, 0, 0);
+                } else {
+                    startDate = now;
+                    startDate.setHours(0, 0, 0, 0);
+                }
+            }
+
+            const filteredMoodLogs = moodLogs.filter(log => new Date(log.timestamp) >= startDate);
+            const filteredSleepLogs = sleepLogs.filter(log => new Date(log.date) >= startDate);
+            const filteredBreathLogs = breathLogs.filter(log => new Date(log.timestamp) >= startDate);
+
+            const filteredHydrationLogs = Object.entries(hydrationLogs)
+                .filter(([dateKey]) => new Date(dateKey) >= startDate)
+                .reduce((acc, [dateKey, log]) => {
+                    acc[dateKey] = log;
+                    return acc;
+                }, {});
+
+            const filteredHabitsWithStatus = [];
+            let tempDate = new Date(startDate);
+            while (tempDate <= now) {
+                const dateKey = toYYYYMMDD(tempDate);
+                habits.forEach(habit => {
+                    if (isHabitDueOn(habit, tempDate)) {
+                        const status = getHabitStatusOnDate(habit.id, dateKey);
+                        filteredHabitsWithStatus.push({ habitId: habit.id, date: dateKey, status: status });
+                    }
+                });
+                tempDate.setDate(tempDate.getDate() + 1);
+            }
+            
+            return { filteredMoodLogs, filteredSleepLogs, filteredBreathLogs, filteredHydrationLogs, filteredHabitsWithStatus };
+        }
+
+
+        function getSummaryStatistics(period) {
+            const { filteredMoodLogs, filteredSleepLogs, filteredBreathLogs, filteredHydrationLogs, filteredHabitsWithStatus } = getFilteredDataByPeriod(period);
+
+            const avgMood = filteredMoodLogs.length > 0 ? (filteredMoodLogs.reduce((sum, log) => sum + log.moodLevel, 0) / filteredMoodLogs.length).toFixed(1) : '--';
+
+            const avgSleepHours = filteredSleepLogs.length > 0 ? (filteredSleepLogs.reduce((sum, log) => sum + log.duration, 0) / filteredSleepLogs.length).toFixed(1) : '--';
+            
+            let totalHabitsCompleted = filteredHabitsWithStatus.filter(item => item.status === 'completed').length;
+            let totalHabitsDue = filteredHabitsWithStatus.length; // Count all due habits in the period
+            
+            const habitCompletionRate = totalHabitsDue > 0 ? ((totalHabitsCompleted / totalHabitsDue) * 100).toFixed(0) : '--';
+
+            let totalHydrationIntake = 0;
+            let hydrationDaysCount = 0;
+            Object.values(filteredHydrationLogs).forEach(log => {
+                totalHydrationIntake += log.totalIntake;
+                hydrationDaysCount++;
+            });
+            const avgDailyHydration = hydrationDaysCount > 0 ? (totalHydrationIntake / hydrationDaysCount).toFixed(0) : '--';
+
+            let totalBreathDuration = 0;
+            let breathSessionCount = 0;
+            filteredBreathLogs.forEach(log => {
+                totalBreathDuration += log.elapsedTime;
+                breathSessionCount++;
+            });
+            const avgBreathSessionDuration = breathSessionCount > 0 ? (totalBreathDuration / breathSessionCount).toFixed(1) : '--';
+
+            return {
+                avgMood,
+                avgSleepHours,
+                habitCompletionRate,
+                avgDailyHydration,
+                avgBreathSessionDuration
+            };
+        }
+
+
+        // --- Gemini API Integrations ---
+        async function generateMoodInsight() {
+            const journalEntry = document.getElementById('mood-notes').value.trim();
+            const insightContainer = document.getElementById('mood-insight-container');
+            insightContainer.innerHTML = ''; 
+            insightContainer.appendChild(moodInsightOutput); 
+
+            if (!journalEntry) {
+                moodInsightOutput.textContent = 'Please write something in your journal entry to get an insight.';
+                moodInsightOutput.classList.remove('hidden');
+                return;
+            }
+
+            moodInsightOutput.textContent = 'Generating insight...';
+            moodInsightOutput.classList.remove('hidden');
+            moodInsightOutput.classList.add('loading-text'); 
+
+            try {
+                const prompt = `Analyze the following journal entry and provide a concise, empathetic insight or summary of the sentiment and key themes. Keep it to 1-2 sentences. Journal Entry: "${journalEntry}"`;
+                let chatHistory = [];
+                chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+                const payload = { contents: chatHistory };
+                const apiKey = ""; 
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                
+                if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
+                    const text = result.candidates[0].content.parts[0].text;
+                    moodInsightOutput.textContent = text;
+                } else {
+                    moodInsightOutput.textContent = 'Could not generate insight. Please try again.';
+                }
+            } catch (error) {
+                console.error("Error generating mood insight:", error);
+                moodInsightOutput.textContent = 'Error generating insight. Please check your network connection.';
+            } finally {
+                moodInsightOutput.classList.remove('loading-text'); 
+            }
+        }
+
+        async function generateHabitSuggestions() {
+            console.log("generateHabitSuggestions called."); // Log entry point
+            habitSuggestionsOutput.innerHTML = '';
+            habitSuggestionsOutput.classList.remove('hidden'); // Ensure visible
+            habitSuggestionsOutput.classList.add('loading-text');
+            habitSuggestionsOutput.textContent = 'Generating suggestions... Please wait.';
+
+            try {
+                // Updated prompt to explicitly request JSON object with 'habits' array
+                const prompt = `Generate 3 to 5 unique and beneficial daily habits related to personal well-being, productivity, or learning. Return them as a JSON object with a single key "habits" whose value is an array of strings. Each string should be a habit. Example: {"habits": ["Read 10 pages", "Hydrate with 2L water", "Meditate for 10 min"]}.`;
+                let chatHistory = [];
+                chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+                const payload = { 
+                    contents: chatHistory,
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: "OBJECT",
+                            properties: {
+                                "habits": {
+                                    "type": "ARRAY",
+                                    "items": { "type": "STRING" }
+                                }
+                            }
+                        }
+                    }
+                };
+                const apiKey = ""; 
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+                console.log("Sending habit suggestion request to Gemini API...");
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+                }
+
+                const result = await response.json();
+                console.log("Gemini API response received:", result);
+
+                if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
+                    const json = result.candidates[0].content.parts[0].text;
+                    console.log("Raw JSON response part:", json);
+                    try {
+                        const parsedJson = JSON.parse(json);
+                        if (parsedJson.habits && Array.isArray(parsedJson.habits)) {
+                            habitSuggestionsOutput.innerHTML = '<strong>Suggestions:</strong> ' + parsedJson.habits.join(', ');
+                        } else {
+                            habitSuggestionsOutput.textContent = 'Could not parse habit suggestions. The response structure was unexpected, received: ' + JSON.stringify(parsedJson);
+                            console.error("Unexpected JSON structure:", parsedJson);
+                        }
+                    } catch (parseError) {
+                        habitSuggestionsOutput.textContent = 'Failed to parse habit suggestions from the response. Raw response: ' + json;
+                        console.error("JSON parsing error:", parseError, "Raw JSON:", json);
+                    }
+                } else {
+                    habitSuggestionsOutput.textContent = 'No habit suggestions generated. The API response was empty or malformed.';
+                    console.error("API response missing candidates or content:", result);
+                }
+            } catch (error) {
+                console.error("Error generating habit suggestions (fetch failed or API error):", error);
+                habitSuggestionsOutput.textContent = `Error generating suggestions: ${error.message}. Please check your network connection and try again.`;
+            } finally {
+                habitSuggestionsOutput.classList.remove('loading-text');
+                // The element is already visible from the start, no need to unhide here again.
+            }
+        }
+
+        async function calculateWaterNeed() {
+            const age = document.getElementById('user-age').value;
+            const weight = document.getElementById('user-weight').value;
+            const activityLevel = document.getElementById('activity-level').value;
+            const climate = document.getElementById('climate').value;
+            const outputElement = document.getElementById('water-need-output');
+
+            if (!age || !weight || age <= 0 || weight <= 0) {
+                outputElement.textContent = 'Please enter valid age and weight.';
+                outputElement.classList.remove('hidden');
+                return;
+            }
+
+            outputElement.textContent = 'Calculating water need...';
+            outputElement.classList.remove('hidden');
+            outputElement.classList.add('loading-text');
+
+            try {
+                const prompt = `As a certified nutritionist or hydration expert, calculate the estimated daily minimum water intake in milliliters for a person with the following characteristics, based on general health guidelines and scientific research. Provide a realistic and research-backed estimate, considering all factors.
+                - Age: ${age} years
+                - Weight: ${weight} kg
+                - Activity Level: ${activityLevel.replace('_', ' ')}
+                - Climate: ${climate.replace('_', ' ')}
+                Provide only the numerical value in ml within a JSON object. Example: {"waterNeedMl": 2500}`;
+                
+                let chatHistory = [];
+                chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+                const payload = {
+                    contents: chatHistory,
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: "OBJECT",
+                            properties: {
+                                "waterNeedMl": { "type": "NUMBER" }
+                            }
+                        }
+                    }
+                };
+                const apiKey = "";
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+
+                if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
+                    const json = result.candidates[0].content.parts[0].text;
+                    const parsedJson = JSON.parse(json);
+                    if (typeof parsedJson.waterNeedMl === 'number') {
+                        dailyWaterNeed = parsedJson.waterNeedMl;
+                        const metadata = JSON.parse(localStorage.getItem(LS_METADATA) || '{}');
+                        localStorage.setItem(LS_METADATA, JSON.stringify({ ...metadata, dailyWaterNeed }));
+                        outputElement.textContent = `Your estimated daily water need is: ${dailyWaterNeed} ml`;
+                        const displayWaterNeedEl = document.getElementById('display-water-need');
+                        if (displayWaterNeedEl) {
+                            displayWaterNeedEl.textContent = `${dailyWaterNeed} ml`;
+                        }
+                        updateHydrationChart(); 
+                    } else {
+                        outputElement.textContent = 'Could not calculate water need. Please check your inputs or try again.';
+                    }
+                } else {
+                    outputElement.textContent = 'Could not calculate water need. Please try again.';
+                }
+            } catch (error) {
+                console.error("Error calculating water need:", error);
+                outputElement.textContent = 'Error calculating water need. Please check your network connection.';
+            } finally {
+                outputElement.classList.remove('loading-text');
+            }
+        }
+
+        async function logHydration(drinkType, quantity) {
+            console.log("logHydration called with:", { drinkType, quantity });
+            const todayKey = toYYYYMMDD(new Date());
+            
+            if (!hydrationLogs[todayKey]) {
+                hydrationLogs[todayKey] = { totalIntake: 0, logs: [] };
+                console.log("Initialized hydrationLogs for today:", hydrationLogs[todayKey]);
+            }
+
+            const waterEquivalent = quantity * BEVERAGE_WATER_EQUIVALENT[drinkType];
+            console.log("Water equivalent:", waterEquivalent);
+
+            hydrationLogs[todayKey].totalIntake = (hydrationLogs[todayKey].totalIntake || 0) + waterEquivalent;
+            console.log("New totalIntake for today:", hydrationLogs[todayKey].totalIntake);
+
+            hydrationLogs[todayKey].logs.push({
+                type: drinkType,
+                quantity: quantity,
+                waterEquivalent: waterEquivalent,
+                timestamp: new Date().toISOString()
+            });
+
+            dailyIntake = hydrationLogs[todayKey].totalIntake;
+            console.log("Updated dailyIntake global variable:", dailyIntake);
+            saveData(); 
+            
+            updateHydrationChart();
+            const displayCurrentIntakeEl = document.getElementById('display-current-intake');
+            if (displayCurrentIntakeEl) {
+                displayCurrentIntakeEl.textContent = `${dailyIntake.toFixed(0)} ml`;
+                console.log("UI display updated for current intake.");
+            }
+        }
+
+        function updateHydrationChart() {
+            console.log("updateHydrationChart called.");
+            const canvas = document.getElementById('hydration-chart');
+            const displayWaterNeedEl = document.getElementById('display-water-need');
+            const displayCurrentIntakeEl = document.getElementById('display-current-intake');
+            if (!canvas || !displayWaterNeedEl || !displayCurrentIntakeEl) {
+                console.log("Chart elements not found, skipping chart update.");
+                return; 
+            }
+            const ctx = canvas.getContext('2d');
+
+            if (hydrationChartInstance) {
+                hydrationChartInstance.destroy();
+                console.log("Destroyed previous chart instance.");
+            }
+
+            const todayKey = toYYYYMMDD(new Date());
+            const currentDayLogs = hydrationLogs[todayKey]?.logs || [];
+            console.log("Current day logs for chart:", currentDayLogs);
+
+            const aggregatedIntake = {};
+            currentDayLogs.forEach(log => {
+                aggregatedIntake[log.type] = (aggregatedIntake[log.type] || 0) + log.waterEquivalent;
+            });
+            console.log("Aggregated intake for chart:", aggregatedIntake);
+
+            let chartLabels = [];
+            let chartData = [];
+            let chartColors = [];
+
+            for (const type in aggregatedIntake) {
+                chartLabels.push(`${type.replace('-', ' ')} (${aggregatedIntake[type].toFixed(0)}ml)`);
+                chartData.push(aggregatedIntake[type]); 
+                chartColors.push(DRINK_COLORS[type]);
+            }
+            console.log("Chart labels:", chartLabels);
+            console.log("Chart data:", chartData);
+
+            const remainingWater = Math.max(0, dailyWaterNeed - dailyIntake);
+            console.log("Remaining water:", remainingWater);
+            console.log("Daily water need:", dailyWaterNeed);
+            console.log("Daily intake (used for remaining):", dailyIntake);
+            if (dailyWaterNeed > 0 && remainingWater > 0) {
+                chartLabels.push(`Remaining (${remainingWater.toFixed(0)}ml)`);
+                chartData.push(remainingWater);
+                chartColors.push(DRINK_COLORS['remaining']);
+            } else if (dailyWaterNeed === 0 && dailyIntake === 0) {
+                chartLabels.push('No Goal / No Intake');
+                chartData.push(1); 
+                chartColors.push(DRINK_COLORS['remaining']);
+            }
+
+            if (dailyWaterNeed > 0 && dailyIntake >= dailyWaterNeed) {
+                if (chartLabels.length === 0) { 
+                     chartLabels.push(`Goal Reached (${dailyIntake.toFixed(0)}ml)`);
+                     chartData.push(dailyIntake);
+                     chartColors.push(DRINK_COLORS['water']); 
+                }
+            }
+
+
+            hydrationChartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: chartLabels,
+                    datasets: [{
+                        data: chartData,
+                        backgroundColor: chartColors,
+                        borderColor: '#ffffff',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '70%', 
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                boxWidth: 12,
+                                padding: 15
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const value = context.parsed;
+                                    const originalLabel = context.label.split(' (')[0]; 
+                                    return `${originalLabel}: ${value.toFixed(0)}ml`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            console.log("Chart instance created/updated.");
+
+            const percentageTextElement = document.getElementById('hydration-percentage-text');
+            if (percentageTextElement) {
+                const percentage = dailyWaterNeed > 0 ? ((dailyIntake / dailyWaterNeed) * 100) : 0;
+                percentageTextElement.textContent = `${percentage.toFixed(0)}% fulfilled`;
+                if (percentage >= 100) {
+                    percentageTextElement.classList.remove('text-orange-500');
+                    percentageTextElement.classList.add('text-green-600');
+                } else {
+                    percentageTextElement.classList.remove('text-green-600');
+                    percentageTextElement.classList.add('text-orange-500');
+                }
+                console.log("Percentage text updated to:", percentageTextElement.textContent);
+            }
+        }
+
+        const scheduleHabitNotifications = () => {
+            const now = new Date();
+            const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            const todayKey = toYYYYMMDD(now);
+
+            habits.forEach(habit => {
+                if (isHabitDueOn(habit, now) && habit.habitReminderTime) {
+                    const habitStatus = getHabitStatusOnDate(habit.id, todayKey);
+
+                    if (habit.habitReminderTime === currentTime && habitStatus === 'pending' && !notificationsSentToday[habit.id]) {
+                        if (Notification.permission === "granted") {
+                            new Notification("Habit Reminder!", {
+                                body: `Time to "${habit.name}"!`,
+                                icon: "https://cdn-icons-png.flaticon.com/512/3448/3448338.png"
+                            });
+                            notificationsSentToday[habit.id] = true; 
+                            saveNotificationsSent(); 
+                        } else {
+                            console.log(`Notification permission not granted for habit: ${habit.name}`);
+                        }
+                    }
+                }
+            });
+        };
+
+        // --- Sleep Tracking Functions ---
+        async function handleLogSleep() {
+            const sleepDate = document.getElementById('sleep-date').value;
+            const sleepHours = parseInt(document.getElementById('sleep-hours').value);
+            const sleepMinutes = parseInt(document.getElementById('sleep-minutes').value);
+            const sleepAbnormalities = document.getElementById('sleep-abnormalities').value.trim();
+            const loggingStatusEl = document.getElementById('sleep-logging-status');
+
+            if (!sleepDate || isNaN(sleepHours) || isNaN(sleepMinutes) || (sleepHours === 0 && sleepMinutes === 0)) {
+                loggingStatusEl.textContent = "Please enter valid sleep duration.";
+                loggingStatusEl.classList.remove('hidden');
+                return;
+            }
+
+            const totalDuration = sleepHours + (sleepMinutes / 60); 
+            
+            const newSleepLog = {
+                id: generateUniqueId(),
+                date: sleepDate, 
+                duration: parseFloat(totalDuration.toFixed(2)),
+                abnormalities: sleepAbnormalities,
+                analysis: null // Initialize analysis as null
+            };
+
+            sleepLogs.push(newSleepLog);
+            saveData();
+            console.log("Sleep logged:", newSleepLog);
+
+            // Clear form
+            document.getElementById('sleep-abnormalities').value = '';
+            document.getElementById('sleep-hours').value = 8;
+            document.getElementById('sleep-minutes').value = 0;
+            loggingStatusEl.classList.add('hidden'); // Hide any previous status message
+
+            renderContentForSection('sleep-tracking-section');
+            renderContentForSection('dashboard-section'); 
+            
+            // Immediately analyze if abnormalities are present
+            if (sleepAbnormalities) {
+                analyzeAndSaveSleepLog(newSleepLog.id, sleepAbnormalities);
+            }
+        }
+
+        async function deleteSleepLog(id) {
+            showConfirmation('Delete Sleep Log?', 'This will be permanent.', () => {
+                sleepLogs = sleepLogs.filter(log => log.id !== id);
+                saveData();
+                renderContentForSection('sleep-tracking-section');
+            });
+        }
+
+        async function analyzeAndSaveSleepLog(logId, abnormalities) {
+            const logIndex = sleepLogs.findIndex(log => log.id === logId);
+            if (logIndex === -1) return;
+
+            const loadingEl = document.getElementById(`sleep-analysis-loading-${logId}`);
+            if (loadingEl) {
+                loadingEl.textContent = 'Generating analysis...';
+                loadingEl.classList.remove('hidden');
+                loadingEl.classList.add('loading-text');
+            } else {
+                console.log(`No specific loading element found for log ${logId}, proceeding with analysis.`);
+            }
+
+            try {
+                const prompt = `Analyze the following sleep notes/abnormalities and provide a concise, helpful insight or suggestions for improvement (1-2 sentences). Format as plain text. Notes: "${abnormalities}"`;
+                let chatHistory = [];
+                chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+                const payload = { contents: chatHistory };
+                const apiKey = ""; 
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                
+                if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
+                    const text = result.candidates[0].content.parts[0].text;
+                    sleepLogs[logIndex].analysis = text;
+                    saveData();
+                } else {
+                    console.error(`Could not generate analysis for log ${logId}: Unexpected API response.`);
+                    sleepLogs[logIndex].analysis = 'Analysis failed.'; // Indicate failure
+                    saveData();
+                }
+            } catch (error) {
+                console.error(`Error generating sleep analysis for log ${logId}:`, error);
+                sleepLogs[logIndex].analysis = 'Error during analysis.'; // Indicate error
+                saveData();
+            } finally {
+                // Re-render the sleep tracking section to update the specific log's display
+                renderContentForSection('sleep-tracking-section'); 
+            }
+        }
+
+        async function analyzeMissingSleepAnalysesOnLoad() {
+            const logsToAnalyze = sleepLogs.filter(log => log.abnormalities && !log.analysis);
+            if (logsToAnalyze.length > 0) {
+                console.log(`Found ${logsToAnalyze.length} sleep logs needing analysis. Analyzing...`);
+                for (const log of logsToAnalyze) {
+                    await analyzeAndSaveSleepLog(log.id, log.abnormalities);
+                }
+            }
+        }
+
+
+        // --- Breath Helper Functions ---
+        function updateBreathingCircle(phase, duration) {
+            const circle = document.getElementById('breathing-circle');
+            const text = document.getElementById('breathing-text');
+            if (!circle || !text) return;
+
+            circle.className = 'breathing-circle-container'; // Reset classes
+            document.documentElement.style.setProperty('--inhale-duration', `${inhaleDuration}s`);
+            document.documentElement.style.setProperty('--hold-duration', `${holdDuration}s`);
+            document.documentElement.style.setProperty('--exhale-duration', `${exhaleDuration}s`);
+
+            switch (phase) {
+                case 'inhale':
+                    circle.classList.add('breathing-in');
+                    text.textContent = 'Breathe In';
+                    break;
+                case 'hold':
+                    circle.classList.add('breathing-hold');
+                    text.textContent = 'Hold';
+                    break;
+                case 'exhale':
+                    circle.classList.add('breathing-out');
+                    text.textContent = 'Breathe Out';
+                    break;
+                default:
+                    text.textContent = 'Start';
+                    break;
+            }
+        }
+
+        function breatheCycle() {
+            clearTimeout(phaseTimeoutId);
+
+            updateBreathingCircle('inhale', inhaleDuration);
+            phaseTimeoutId = setTimeout(() => {
+                updateBreathingCircle('hold', holdDuration);
+                phaseTimeoutId = setTimeout(() => {
+                    updateBreathingCircle('exhale', exhaleDuration);
+                    phaseTimeoutId = setTimeout(() => {
+                        breatheCycle(); // Repeat the cycle
+                    }, exhaleDuration * 1000);
+                }, holdDuration * 1000);
+            }, inhaleDuration * 1000);
+        }
+
+        function startBreathing() {
+            // Get current values from inputs
+            inhaleDuration = parseInt(document.getElementById('inhale-duration-input').value) || 4;
+            holdDuration = parseInt(document.getElementById('hold-duration-input').value) || 4;
+            exhaleDuration = parseInt(document.getElementById('exhale-duration-input').value) || 4;
+
+            // Ensure durations are not zero for transitions to work correctly
+            if (inhaleDuration <= 0) inhaleDuration = 1;
+            if (exhaleDuration <= 0) exhaleDuration = 1;
+
+            stopBreathing(false); // Clear any existing cycle, but don't log automatically
+            sessionStartTime = Date.now(); // Start the session timer
+            breatheCycle();
+            console.log(`Breathing started: Inhale ${inhaleDuration}s, Hold ${holdDuration}s, Exhale ${exhaleDuration}s`);
+        }
+
+        function stopBreathing(logSession = true) { // Added parameter to control logging
+            clearTimeout(phaseTimeoutId);
+            breathingInterval = null; 
+            const circle = document.getElementById('breathing-circle');
+            const text = document.getElementById('breathing-text');
+            if (circle) circle.className = 'breathing-circle-container'; 
+            if (text) text.textContent = 'Start';
+
+            if (logSession && sessionStartTime) {
+                const elapsedTime = (Date.now() - sessionStartTime) / 1000; // in seconds
+                handleLogBreathingSession(elapsedTime); // Pass the elapsed time to the log function
+            }
+            sessionStartTime = null; // Reset the session start time
+            console.log("Breathing stopped.");
+        }
+
+        async function handleLogBreathingSession(elapsedTimeOverride = null) {
+            // Ensure values are current from the inputs
+            const currentInhale = parseInt(document.getElementById('inhale-duration-input').value) || 4;
+            const currentHold = parseInt(document.getElementById('hold-duration-input').value) || 4;
+            const currentExhale = parseInt(document.getElementById('exhale-duration-input').value) || 4;
+            // The totalDuration below refers to the sum of the pattern (inhale+hold+exhale), not elapsed session
+            const patternTotalDuration = currentInhale + currentHold + currentExhale; 
+            
+            // Use elapsedTimeOverride if provided (from stop button), otherwise calculate from current sessionStartTime
+            const elapsedTime = elapsedTimeOverride !== null ? elapsedTimeOverride : (sessionStartTime ? (Date.now() - sessionStartTime) / 1000 : 0);
+
+            const newBreathLog = {
+                id: generateUniqueId(),
+                timestamp: new Date().toISOString(),
+                inhaleDuration: currentInhale,
+                holdDuration: currentHold,
+                exhaleDuration: currentExhale,
+                patternTotalDuration: patternTotalDuration, // Keep this for reference to pattern
+                elapsedTime: elapsedTime // The actual session duration
+            };
+
+            breathLogs.push(newBreathLog);
+            saveData();
+            console.log("Breathing session logged:", newBreathLog);
+
+            // Re-render the breath helper section to show the updated log list
+            renderContentForSection('breath-helper-section');
+        }
+
+        async function deleteBreathLog(id) {
+            showConfirmation('Delete Breathing Log?', 'This will be permanent.', () => {
+                breathLogs = breathLogs.filter(log => log.id !== id);
+                saveData();
+                renderContentForSection('breath-helper-section');
+            });
+        }
+
+        async function generatePersonalizedRecommendations(period = '7days') { // Default period
+            const recommendationsOutput = document.getElementById('recommendations-output');
+            const recommendationsContent = document.getElementById('recommendations-content');
+            
+            recommendationsOutput.textContent = 'Generating recommendations based on your data...';
+            recommendationsOutput.classList.remove('hidden');
+            recommendationsOutput.classList.add('loading-text');
+            recommendationsContent.innerHTML = ''; // Clear previous content
+
+            // Update active state for filter buttons
+            document.querySelectorAll('.recommendation-filter-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.period === period);
+            });
+
+            // Filter data based on period
+            const { filteredMoodLogs, filteredSleepLogs, filteredBreathLogs, filteredHydrationLogs, filteredHabitsWithStatus } = getFilteredDataByPeriod(period);
+
+            // Aggregate data for the prompt
+            const avgMood = filteredMoodLogs.length > 0 ? (filteredMoodLogs.reduce((sum, log) => sum + log.moodLevel, 0) / filteredMoodLogs.length).toFixed(1) : 'N/A';
+            const moodNotesSummary = filteredMoodLogs.map(log => log.notes).filter(Boolean).join('. ');
+
+            const avgSleepHours = filteredSleepLogs.length > 0 ? (filteredSleepLogs.reduce((sum, log) => sum + log.duration, 0) / filteredSleepLogs.length).toFixed(1) : 'N/A';
+            const sleepAbnormalitiesSummary = filteredSleepLogs.map(log => log.abnormalities).filter(Boolean).join('. ');
+
+            // Calculate habit completion rates within the period
+            const habitCompletionRates = habits.map(h => {
+                let completedCount = 0;
+                let totalDueCount = 0;
+                filteredHabitsWithStatus.filter(item => item.habitId === h.id).forEach(item => {
+                    if (isHabitDueOn(h, new Date(item.date))) { // Check if habit was due on that day
+                        totalDueCount++;
+                        if (item.status === 'completed') {
+                            completedCount++;
+                        }
+                    }
+                });
+                const completionRate = totalDueCount > 0 ? ((completedCount / totalDueCount) * 100).toFixed(0) : 'N/A';
+                return `Habit: "${h.name}" (Completion: ${completionRate}% over selected period)`;
+            }).join('; ');
+
+            const hydrationInfo = `Daily Water Need: ${dailyWaterNeed} ml, Current Daily Intake: ${filteredHydrationLogs[toYYYYMMDD(new Date())]?.totalIntake.toFixed(0) || 0} ml (today)`; // Use today's intake for current hydration
+
+            // Construct prompt for Gemini API
+            const prompt = `Based on the following user data for the period "${period}", provide personalized, actionable recommendations to improve their well-being. Focus on holistic advice, connecting different aspects of their health.
+            
+            **User Data for Last ${period} (or all time if specified):**
+            - Average Mood: ${avgMood} (on a scale of 1-10). Journal entries notes: "${moodNotesSummary || 'No recent notes.'}"
+            - Average Sleep: ${avgSleepHours} hours. Sleep notes/abnormalities: "${sleepAbnormalitiesSummary || 'No recent abnormalities.'}"
+            - Habits: ${habits.length > 0 ? habitCompletionRates : 'No habits tracked.'}
+            - Hydration: ${hydrationInfo}
+
+            **Instructions for Recommendations:**
+            1.  Identify 2-3 key areas for improvement based on the data provided for the selected period.
+            2.  Provide specific, actionable tips for each area.
+            3.  Keep the language encouraging and supportive.
+            4.  Format the recommendations as a Markdown list. If insufficient data is available for the period, offer general well-being tips.`;
+
+            let chatHistory = [];
+            chatHistory.push({ role: "user", parts: [{ text: prompt }] });
+            const payload = { contents: chatHistory };
+            const apiKey = ""; 
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                
+                if (result.candidates && result.candidates.length > 0 && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
+                    const text = result.candidates[0].content.parts[0].text;
+                    // Ensure marked.js is loaded before parsing
+                    if (typeof marked !== 'undefined') {
+                        recommendationsContent.innerHTML = marked.parse(text); 
+                    } else {
+                        recommendationsContent.textContent = text; // Fallback if marked.js isn't loaded
+                    }
+                    recommendationsOutput.classList.add('hidden'); // Hide loading message
+                } else {
+                    recommendationsContent.textContent = 'Could not generate recommendations. Please try again.';
+                    recommendationsOutput.classList.add('hidden'); 
+                }
+            } catch (error) {
+                console.error("Error generating recommendations:", error);
+                recommendationsContent.textContent = 'Error generating recommendations. Please check your network connection.';
+                recommendationsOutput.classList.add('hidden'); 
+            } finally {
+                recommendationsOutput.classList.remove('loading-text'); 
+            }
+        }
+        
+        // Include marked.js for Markdown parsing if not already present
+        if (typeof marked === 'undefined') {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/marked/marked.min.js';
+            script.onload = () => {
+                // Initialize marked if necessary, though it often auto-initializes
+                console.log("Marked.js loaded.");
+            };
+            document.head.appendChild(script);
+        }
+
+        // --- Initialization & Listeners ---
+        function attachGlobalListeners() {
+            document.querySelectorAll('.nav-link').forEach(l => l.addEventListener('click', () => showSection(l.dataset.target)));
+            document.getElementById('close-habit-modal').addEventListener('click', () => toggleModal(habitModal, false));
+            document.getElementById('cancel-habit-modal').addEventListener('click', () => toggleModal(habitModal, false));
+            document.getElementById('habit-form').addEventListener('submit', handleHabitFormSubmit);
+            document.getElementById('habit-frequency').addEventListener('change', (e) => document.getElementById('specific-days-container').classList.toggle('expanded', e.target.value === 'specific-days'));
+            document.getElementById('confirm-modal-cancel').addEventListener('click', () => toggleModal(confirmModal, false));
+            document.getElementById('confirm-modal-ok').addEventListener('click', () => { if (confirmCallback) confirmCallback(); toggleModal(confirmModal, false); });
+            
+            appContainer.addEventListener('click', (e) => {
+                const target = e.target.closest('button');
+                if(!target) return;
+                
+                if(target.classList.contains('habit-status-btn')) handleHabitStatusUpdate(target.dataset.habitId, target.dataset.status);
+                else if(target.classList.contains('delete-mood-btn')) showConfirmation('Delete Mood Log?', 'This will be permanent.', () => {
+                    moodLogs = moodLogs.filter(log => log.id !== target.dataset.id);
+                    saveData();
+                    renderContentForSection('mood-logging-section');
+                    renderContentForSection('dashboard-section');
+                    renderContentForSection('calendar-section');
+                    renderContentForSection('analytics-section');
+                });
+                else if(target.id === 'add-new-habit-btn') openHabitModal();
+                else if(target.classList.contains('edit-habit-btn')) openHabitModal(habits.find(h => h.id === target.dataset.id));
+                else if(target.classList.contains('delete-habit-btn')) showConfirmation('Delete Habit?', 'This deletes the habit and its history.', () => deleteHabit(target.dataset.id));
+                else if(target.classList.contains('calendar-nav-btn')) {
+                    currentCalendarDate.setMonth(currentCalendarDate.getMonth() + parseInt(target.dataset.direction, 10));
+                    renderContentForSection('calendar-section');
+                } else if(target.classList.contains('analytics-filter-btn')) { // Changed from filter-btn
+                    target.parentElement.querySelectorAll('.analytics-filter-btn').forEach(b => b.classList.remove('active'));
+                    target.classList.add('active');
+                    const chartType = target.dataset.chart;
+                    const period = target.dataset.period;
+                    
+                    if (chartType === 'summary') {
+                        renderSummaryStatistics(period);
+                        // Make sure correlation insights also update when summary filter changes
+                        document.querySelector('#insights-container').innerHTML = renderCorrelationInsights(period); 
+                    } else if (chartType === 'correlation-insights') {
+                        document.querySelector('#insights-container').innerHTML = renderCorrelationInsights(period);
+                    } else {
+                        switch(chartType) {
+                            case 'mood': renderMoodTrendChart(period); break;
+                            case 'habit': renderHabitCompletionChart(period); break;
+                            case 'sleep': renderSleepTrendChart(period); break;
+                            case 'hydration': renderHydrationTrendChart(period); break;
+                            case 'breath': renderBreathTrendChart(period); break;
+                        }
+                    }
+                } else if (target.id === 'log-mood-btn') handleLogMood();
+                else if (target.id === 'get-mood-insight-btn') generateMoodInsight(); 
+                else if (target.id === 'suggest-habits-btn') {
+                    console.log("Suggest Habits button clicked!"); // New log for debugging
+                    generateHabitSuggestions(); 
+                }
+                else if (target.id === 'calculate-water-need-btn') calculateWaterNeed(); 
+                else if (target.classList.contains('log-drink-btn')) { 
+                    const drinkType = target.dataset.drinkType;
+                    const quantityInput = document.getElementById(`log-${drinkType}-qty`);
+                    const quantity = parseInt(quantityInput.value);
+                    if (!isNaN(quantity) && quantity > 0) {
+                        logHydration(drinkType, quantity);
+                    } else {
+                        console.warn(`Invalid quantity for ${drinkType}: ${quantityInput.value}`);
+                        quantityInput.value = 250; 
+                    }
+                } else if (target.id === 'log-sleep-btn') { 
+                    handleLogSleep();
+                } else if (target.classList.contains('delete-sleep-log-btn')) { 
+                    deleteSleepLog(target.dataset.id); 
+                } else if (target.id === 'start-breathing-btn') { 
+                    startBreathing();
+                } else if (target.id === 'stop-breathing-btn') {
+                    stopBreathing(); // This will now trigger logging if a session was active
+                } else if (target.id === 'log-breathing-session-btn') { 
+                    // If logging from this button, and session is active, calculate elapsed time
+                    if (sessionStartTime) {
+                        const elapsedTime = (Date.now() - sessionStartTime) / 1000;
+                        handleLogBreathingSession(elapsedTime);
+                    } else {
+                        // If no session is active, but user clicks 'Log Session', log with 0 elapsed time
+                        handleLogBreathingSession(0);
+                    }
+                } else if (target.classList.contains('delete-breath-log-btn')) { 
+                    deleteBreathLog(target.dataset.id);
+                } else if (target.id === 'generate-recommendations-btn') { 
+                    const activePeriodButton = document.querySelector('#recommendations-filter-buttons .recommendation-filter-btn.active');
+                    const period = activePeriodButton ? activePeriodButton.dataset.period : '7days'; // Default to 7 days
+                    generatePersonalizedRecommendations(period);
+                } else if (target.classList.contains('recommendation-filter-btn')) {
+                    document.querySelectorAll('.recommendation-filter-btn').forEach(btn => btn.classList.remove('active'));
+                    target.classList.add('active');
+                    generatePersonalizedRecommendations(target.dataset.period);
+                }
+            });
+
+             appContainer.addEventListener('input', e => {
+                const target = e.target;
+                if (target.id === 'mood-slider') {
+                    document.getElementById('mood-value').textContent = target.value;
+                    document.getElementById('mood-emoji').textContent = MOOD_EMOJIS[target.value - 1];
+                }
+            });
+        }
+        
+        async function initializeApp() {
+            loadData();
+            loadNotificationsSent(); 
+
+            checkAndResetHabits();
+
+            calculateHabitStreaks();
+
+            userInfo.textContent = `ID: Local User`;
+
+            hasInitialDataLoaded = true;
+            const activeNavLink = document.querySelector('.nav-link.active');
+            const currentSectionId = activeNavLink ? activeNavLink.dataset.target : 'dashboard-section';
+            showSection(currentSectionId);
+            appContainer.classList.remove('opacity-0');
+            console.log("Local Storage: All initial data loaded and UI rendered successfully.");
+
+            requestNotificationPermission();
+
+            // Analyze any sleep logs that are missing analysis on load
+            await analyzeMissingSleepAnalysesOnLoad(); 
+
+            setInterval(saveData, 60000); 
+
+            setInterval(scheduleHabitNotifications, 60000);
+        }
+
+        const requestNotificationPermission = () => { if ("Notification" in window && Notification.permission !== "denied") Notification.requestPermission(); };
+        const showHabitNotification = (name) => { if (Notification.permission === "granted") new Notification("Habit Completed!", { body: `Great job: "${name}"!`, icon: "https://cdn-icons-png.flaticon.com/512/3448/3448338.png" }); };
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            document.querySelector('#specific-days-container div').innerHTML = days.map(day => `
+                <label class="inline-flex items-center p-2 rounded-lg bg-gray-100 cursor-pointer">
+                    <input type="checkbox" class="form-checkbox text-indigo-600" value="${day}"><span class="ml-2">${day}</span>
+                </label>`).join('');
+            
+            attachGlobalListeners();
+            initializeApp(); 
+        });
+    </script>
+</body>
+</html>

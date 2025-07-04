@@ -348,7 +348,7 @@
         
         // --- Gemini API Integrations ---
         async function callGeminiAPI(prompt, config = {}) {
-            const apiKey = "AIzaSyB1_pV6pkD1ohLBe18ey0gy6Pz4BRXD8Dg"; // API Key is managed by the environment
+            const apiKey = ""; // API Key is managed by the environment
             const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
             const payload = {
@@ -385,7 +385,7 @@
         // --- Local Storage Operations ---
         const loadData = () => {
             try {
-                moodLogs = JSON.parse(localStorage.getItem(LS_MOOD_LOGS) || '[]').map(log => ({ ...log, timestamp: new Date(log.timestamp) }));
+                moodLogs = JSON.parse(localStorage.getItem(LS_MOOD_LOGS) || '[]').map(log => ({ ...log, id: log.id || generateUniqueId(), timestamp: new Date(log.timestamp) }));
                 habits = JSON.parse(localStorage.getItem(LS_HABITS) || '[]').map(habit => ({ ...habit, createdAt: new Date(habit.createdAt) }));
                 dailyHabitStatuses = JSON.parse(localStorage.getItem(LS_HABIT_STATUSES) || '{}');
                 sleepLogs = JSON.parse(localStorage.getItem(LS_SLEEP_LOGS) || '[]').map(log => ({ ...log, date: new Date(log.date) }));
@@ -1161,6 +1161,16 @@
             renderContentForSection('mood-logging-section'); 
             renderContentForSection('dashboard-section');
         }
+        
+        // --- FIX: New function to delete a mood log ---
+        function deleteMood(id) {
+            showConfirmation('Delete Mood Log?', 'This action cannot be undone.', () => {
+                moodLogs = moodLogs.filter(log => log.id !== id);
+                saveData();
+                renderContentForSection('mood-logging-section');
+                renderContentForSection('dashboard-section');
+            });
+        }
 
         function openHabitModal(habit = null) {
             const form = document.getElementById('habit-form');
@@ -1486,9 +1496,10 @@
             journalPromptOutput.classList.add('loading-text');
 
             try {
-                const prompt = `Generate a single, short (1-2 sentences) reflective journaling prompt focused on well-being, gratitude, or self-discovery.`;
+                // --- FIX: Updated prompt for more artistic and longer output ---
+                const prompt = `Generate a single, artistic, and evocative journaling prompt designed to inspire deep reflection. The prompt should be at least 2-3 sentences long and use metaphorical or sensory language. It should guide the user to explore their inner world, memories, or future aspirations in a creative way. For example, instead of 'What are you grateful for?', it could be 'Describe a memory that feels like warm sunlight on your skin. What colors, sounds, and feelings are held within that moment?'`;
                 const promptText = await callGeminiAPI(prompt);
-                journalPromptOutput.innerHTML = `<strong>Journal Prompt:</strong> ${promptText}`;
+                journalPromptOutput.innerHTML = `<strong class="block mb-2 text-green-900">Journal Prompt:</strong> <p class="italic">${promptText}</p>`;
             } catch (error) {
                 journalPromptOutput.textContent = 'Could not generate prompt. Please try again.';
             } finally {
@@ -1974,7 +1985,8 @@ Based on this, write a short, reflective journal entry for me.`;
 
                 if (target.classList.contains('habit-suggestion-item')) { document.getElementById('new-habit-name').value = target.textContent; } 
                 else if(target.classList.contains('habit-status-btn')) handleHabitStatusUpdate(target.dataset.habitId, target.dataset.status);
-                else if(target.classList.contains('delete-mood-btn')) deleteHabit(target.dataset.id);
+                // --- FIX: Correctly call deleteMood instead of deleteHabit ---
+                else if(target.classList.contains('delete-mood-btn')) deleteMood(target.dataset.id);
                 else if(target.classList.contains('edit-habit-btn')) openHabitModal(habits.find(h => h.id === target.dataset.id));
                 else if(target.classList.contains('archive-toggle-habit-btn')) archiveHabit(target.dataset.id);
                 else if(target.classList.contains('delete-habit-btn')) deleteHabit(target.dataset.id);

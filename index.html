@@ -1429,7 +1429,8 @@
                     ...moodLogs.map(l => new Date(l.timestamp).getTime()),
                     ...sleepLogs.map(l => new Date(l.date).getTime()),
                     ...breathLogs.map(l => new Date(l.timestamp).getTime()),
-                    ...Object.keys(hydrationLogs).map(k => new Date(k).getTime())
+                    ...Object.keys(hydrationLogs).map(k => new Date(k).getTime()),
+                    ...journalEntries.map(l => new Date(l.date).getTime()) // Include journal entries for start date calculation
                 ].filter(t => !isNaN(t));
                 if (allTimestamps.length > 0) startDate = new Date(Math.min(...allTimestamps));
             }
@@ -1438,13 +1439,15 @@
             const filteredSleepLogs = sleepLogs.filter(log => new Date(log.date) >= startDate);
             const filteredBreathLogs = breathLogs.filter(log => new Date(log.timestamp) >= startDate);
             const filteredHydrationLogs = Object.fromEntries(Object.entries(hydrationLogs).filter(([dateKey]) => new Date(dateKey) >= startDate));
+            const filteredJournalEntries = journalEntries.filter(entry => new Date(entry.date) >= startDate);
+
 
             const filteredHabitsWithStatus = [];
             for (let d = new Date(startDate); d <= now; d.setDate(d.getDate() + 1)) {
                 const dateKey = toYYYYMMDD(d);
                 habits.forEach(habit => {
                     const status = getHabitStatusOnDate(habit.id, dateKey);
-                    if (status !== 'pending' || isHabitDueOn(habit, d)) {
+                    if (isHabitDueOn(habit, d)) { // Only include if due, regardless of status for analysis
                          filteredHabitsWithStatus.push({ habitId: habit.id, date: dateKey, status: status, isArchived: habit.isArchived });
                     }
                 });
@@ -1463,14 +1466,14 @@
                 filteredBreathLogs.forEach(log => { const k = toYYYYMMDD(log.timestamp); if(dataPoints[k]) { dataPoints[k].breath.total += log.elapsedTime / 60; dataPoints[k].breath.count++; }});
                 Object.entries(filteredHydrationLogs).forEach(([k, log]) => { if(dataPoints[k]) dataPoints[k].hydration.total = log.totalIntake; });
                 filteredHabitsWithStatus.forEach(h => { if(dataPoints[h.date] && !h.isArchived) { if(h.status === 'completed') dataPoints[h.date].habit.completed++; else if(h.status === 'skipped') dataPoints[h.date].habit.skipped++; }});
-                return { labels, dataPoints };
+                return { labels, dataPoints, startDate }; // Return startDate for consistency
             }
 
-            return { filteredMoodLogs, filteredSleepLogs, filteredBreathLogs, filteredHydrationLogs, filteredHabitsWithStatus };
+            return { filteredMoodLogs, filteredSleepLogs, filteredBreathLogs, filteredHydrationLogs, filteredHabitsWithStatus, filteredJournalEntries, startDate };
         }
 
         function getSummaryStatistics(period) {
-            const { filteredMoodLogs, filteredSleepLogs, filteredBreathLogs, filteredHydrationLogs, filteredHabitsWithStatus } = getFilteredDataByPeriod(period);
+            const { filteredMoodLogs, filteredSleepLogs, filteredBreathLogs, filteredHydrationLogs, filteredHabitsWithStatus, filteredJournalEntries, startDate } = getFilteredDataByPeriod(period);
 
             const avgMood = filteredMoodLogs.length > 0 ? (filteredMoodLogs.reduce((s, l) => s + l.moodLevel, 0) / filteredMoodLogs.length).toFixed(1) : '--';
             const avgSleepHours = filteredSleepLogs.length > 0 ? (filteredSleepLogs.reduce((s, l) => s + l.duration, 0) / filteredSleepLogs.length).toFixed(1) : '--';
@@ -1481,9 +1484,36 @@
 
             const hydrationDays = Object.values(filteredHydrationLogs);
             const avgDailyHydration = hydrationDays.length > 0 ? (hydrationDays.reduce((s, l) => s + l.totalIntake, 0) / hydrationDays.length).toFixed(0) : '--';
-            const avgBreathSessionDuration = filteredBreathLogs.length > 0 ? (filteredBreathLogs.reduce((s, l) => s + l.elapsedTime, 0) / filteredBreathLogs.length) : 0;
+            const avgBreathSessionDuration = filteredBreathLogs.length > 0 ? (filteredBreathLogs.reduce((s, l) => s + l.elapsedTime, 0) / filteredBreathLogs.length) : 0; // in seconds
 
-            return { avgMood, avgSleepHours, habitCompletionRate, avgDailyHydration, avgBreathSessionDuration };
+            // New additions for more detailed prompt context
+            const totalMoodEntries = filteredMoodLogs.length;
+            const totalSleepEntries = filteredSleepLogs.length;
+            const totalBreathSessions = filteredBreathLogs.length;
+            const totalHydrationDays = hydrationDays.length;
+            const totalHabitsDue = dueHabits.length;
+            const totalHabitsCompleted = completedHabits;
+
+            // Combine all relevant notes and journal entries
+            const allNotes = [
+                ...filteredMoodLogs.map(l => l.notes).filter(Boolean),
+                ...filteredSleepLogs.map(l => l.abnormalities).filter(Boolean),
+                ...filteredJournalEntries.map(entry => entry.content).filter(Boolean)
+            ].join('. ');
+
+            return {
+                avgMood, avgSleepHours, habitCompletionRate, avgDailyHydration, avgBreathSessionDuration,
+                totalMoodEntries, totalSleepEntries, totalBreathSessions, totalHydrationDays,
+                totalHabitsDue, totalHabitsCompleted,
+                dailyWaterNeed, // Add dailyWaterNeed from global state
+                allNotes,
+                filteredMoodLogs, // Pass raw logs for detailed analysis by AI if needed
+                filteredSleepLogs,
+                filteredBreathLogs,
+                filteredHydrationLogs,
+                filteredHabitsWithStatus,
+                filteredJournalEntries // Pass raw journal entries
+            };
         }
         
         async function generateJournalPrompt() {
@@ -1774,16 +1804,44 @@
             content.innerHTML = '';
             document.querySelectorAll('.recommendation-filter-btn').forEach(btn => btn.className = `recommendation-filter-btn px-3 py-1 rounded-md text-sm ${btn.dataset.period === period ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`);
 
-            const { filteredMoodLogs, filteredSleepLogs, filteredHabitsWithStatus } = getFilteredDataByPeriod(period);
-            const summary = getSummaryStatistics(period);
+            const summary = getSummaryStatistics(period); // This will now return more detailed info
             
-            const habitCompletionSummary = habits.filter(h => !h.isArchived).map(h => {
-                const due = filteredHabitsWithStatus.filter(s => s.habitId === h.id && !s.isArchived).length;
-                const completed = filteredHabitsWithStatus.filter(s => s.habitId === h.id && s.status === 'completed').length;
-                return `${h.name}: ${due > 0 ? ((completed/due)*100).toFixed(0) : 'N/A'}% completion`;
-            }).join(', ');
-            
-            const prompt = `Based on this user data for the last ${period}, provide personalized, actionable recommendations. Format as a Markdown list. Data: Avg Mood=${summary.avgMood}/10, Avg Sleep=${summary.avgSleepHours}hrs, Habit Completion=[${habitCompletionSummary || 'none'}], Notes: "${filteredMoodLogs.map(l=>l.notes).filter(Boolean).join('. ')}"`;
+            // Construct a more comprehensive prompt
+            let prompt = `Based on the following user data for the last ${period}, provide personalized, actionable, and empathetic recommendations for improving overall well-being. Analyze patterns and suggest specific steps. Format your response as a Markdown list with clear headings for different areas (e.g., "Mood Improvement", "Habit Enhancement", "Sleep Quality").
+
+**Summary Statistics (${period}):**
+- Average Mood: ${summary.avgMood}/10 (from ${summary.totalMoodEntries} entries)
+- Average Sleep: ${summary.avgSleepHours} hours (from ${summary.totalSleepEntries} entries)
+- Habit Completion Rate: ${summary.habitCompletionRate}% (${summary.totalHabitsCompleted} completed out of ${summary.totalHabitsDue} due)
+- Average Daily Hydration: ${summary.avgDailyHydration} ml (across ${summary.totalHydrationDays} days, daily goal: ${summary.dailyWaterNeed} ml)
+- Average Breathing Session Duration: ${(summary.avgBreathSessionDuration / 60).toFixed(1)} minutes (from ${summary.totalBreathSessions} sessions)
+
+**Recent Trends & Notes:**
+`;
+
+            if (summary.filteredMoodLogs.length > 0) {
+                const moodsTrend = summary.filteredMoodLogs.slice(-7).map(log => log.moodLevel).join(', ');
+                prompt += `- Recent Mood Levels (last ${Math.min(7, summary.filteredMoodLogs.length)} entries): ${moodsTrend}\n`;
+            }
+            if (summary.filteredSleepLogs.length > 0) {
+                const sleepQualities = summary.filteredSleepLogs.slice(-7).map(log => log.sleepQuality).join(', ');
+                prompt += `- Recent Sleep Qualities (last ${Math.min(7, summary.filteredSleepLogs.length)} entries): ${sleepQualities}\n`;
+            }
+            if (summary.allNotes) {
+                // Truncate to avoid excessively long prompts, max 1000 characters for notes
+                const truncatedNotes = summary.allNotes.length > 1000 ? summary.allNotes.substring(0, 1000) + '...' : summary.allNotes;
+                prompt += `- Combined Notes/Reflections: "${truncatedNotes}"\n`; 
+            } else {
+                prompt += `- No detailed notes or journal entries provided for this period.\n`;
+            }
+
+            prompt += `\n**Your recommendations should be:**
+- **Actionable:** Provide specific, practical steps.
+- **Personalized:** Relate directly to the provided data.
+- **Holistic:** Cover different aspects of well-being (mood, sleep, habits, hydration, mindfulness).
+- **Encouraging:** Maintain a positive and supportive tone.
+- **Concise:** Get straight to the point while being helpful.
+`;
 
             try {
                 const recommendations = await callGeminiAPI(prompt);

@@ -1007,7 +1007,7 @@
                     <div class="space-y-6">
                         <div class="flex flex-col gap-2">
                             <h3 class="text-lg font-semibold text-gray-700">Import Data</h3>
-                            <p class="text-sm text-gray-500">Import data from a previously exported JSON file. This will overwrite all current data.</p>
+                            <p class="text-sm text-gray-500">Import data from a previously exported JSON file. This will merge with your current data.</p>
                             <input type="file" id="import-file-input" accept=".json" class="hidden"/>
                             <button id="import-data-btn" class="w-full bg-blue-600 text-white font-semibold py-2 rounded-lg hover:bg-blue-700">Import Data</button>
                             <div id="import-status" class="text-sm mt-2 hidden p-2 rounded-md"></div>
@@ -1960,7 +1960,7 @@ Based on this, write a short, reflective journal entry for me.`;
 
         function exportDataToJson() {
             const dataToExport = {
-                moodLogs, habits, dailyHabitStatuses, sleepLogs, breathLogs, hydrationLogs, journalEntries,
+                moodLogs, habits, dailyHabitStatuses, sleepLogs, breathLogs, journalEntries,
                 metadata: JSON.parse(localStorage.getItem(LS_METADATA) || '{}')
             };
             const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
@@ -1986,27 +1986,62 @@ Based on this, write a short, reflective journal entry for me.`;
                 try { importedData = JSON.parse(e.target.result); } 
                 catch (error) { importStatusEl.className = 'text-sm mt-2 p-2 rounded-md bg-red-100 text-red-700'; importStatusEl.textContent = `Error: Invalid JSON file.`; return; }
                 
-                showConfirmation('Import Data?', 'This will overwrite all existing data.', () => {
-                    const validatedHabits = (importedData.habits || []).map(h => ({ ...h, days: Array.isArray(h.days) ? h.days : [] })).filter(Boolean);
-                    
-                    moodLogs = importedData.moodLogs || [];
-                    habits = validatedHabits;
-                    dailyHabitStatuses = importedData.dailyHabitStatuses || {};
-                    sleepLogs = importedData.sleepLogs || [];
-                    breathLogs = importedData.breathLogs || [];
-                    hydrationLogs = importedData.hydrationLogs || {};
-                    journalEntries = importedData.journalEntries || [];
-                    dailyWaterNeed = importedData.metadata?.dailyWaterNeed || 0;
+                showConfirmation('Import Data?', 'This will merge imported data with your existing data. Existing entries with the same ID will be updated.', () => {
+                    // Merge moodLogs
+                    const newMoodLogs = (importedData.moodLogs || []).map(log => ({ ...log, id: log.id || generateUniqueId(), timestamp: new Date(log.timestamp) }));
+                    moodLogs = [...moodLogs, ...newMoodLogs].filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i); // Concatenate and remove duplicates by ID
+
+                    // Merge habits
+                    const validatedImportedHabits = (importedData.habits || []).map(h => ({ ...h, days: Array.isArray(h.days) ? h.days : [], id: h.id || generateUniqueId() })).filter(Boolean);
+                    habits = [...habits, ...validatedImportedHabits].filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i); // Concatenate and remove duplicates by ID
+
+                    // Merge dailyHabitStatuses
+                    const importedDailyHabitStatuses = importedData.dailyHabitStatuses || {};
+                    for (const habitId in importedDailyHabitStatuses) {
+                        if (dailyHabitStatuses[habitId]) {
+                            dailyHabitStatuses[habitId] = { ...dailyHabitStatuses[habitId], ...importedDailyHabitStatuses[habitId] };
+                        } else {
+                            dailyHabitStatuses[habitId] = importedDailyHabitStatuses[habitId];
+                        }
+                    }
+
+                    // Merge sleepLogs
+                    const newSleepLogs = (importedData.sleepLogs || []).map(log => ({ ...log, id: log.id || generateUniqueId(), date: new Date(log.date) }));
+                    sleepLogs = [...sleepLogs, ...newSleepLogs].filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i); // Concatenate and remove duplicates by ID
+
+                    // Merge breathLogs
+                    const newBreathLogs = (importedData.breathLogs || []).map(log => ({ ...log, id: log.id || generateUniqueId(), timestamp: new Date(log.timestamp) }));
+                    breathLogs = [...breathLogs, ...newBreathLogs].filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i); // Concatenate and remove duplicates by ID
+
+                    // Merge hydrationLogs
+                    const importedHydrationLogs = importedData.hydrationLogs || {};
+                    for (const dateKey in importedHydrationLogs) {
+                        if (hydrationLogs[dateKey]) {
+                            // If a log for the same day exists, merge its 'logs' array
+                            hydrationLogs[dateKey].totalIntake = (hydrationLogs[dateKey].totalIntake || 0) + (importedHydrationLogs[dateKey].totalIntake || 0);
+                            hydrationLogs[dateKey].logs = [...(hydrationLogs[dateKey].logs || []), ...(importedHydrationLogs[dateKey].logs || [])];
+                        } else {
+                            hydrationLogs[dateKey] = importedHydrationLogs[dateKey];
+                        }
+                    }
+
+                    // Merge journalEntries
+                    const newJournalEntries = (importedData.journalEntries || []).map(entry => ({ ...entry, id: entry.id || generateUniqueId(), date: new Date(entry.date) }));
+                    journalEntries = [...journalEntries, ...newJournalEntries].filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i); // Concatenate and remove duplicates by ID
+
+                    // Merge metadata for dailyWaterNeed
+                    const currentMetadata = JSON.parse(localStorage.getItem(LS_METADATA) || '{}');
+                    dailyWaterNeed = currentMetadata.dailyWaterNeed || importedData.metadata?.dailyWaterNeed || 0;
                     
                     saveData();
-                    initializeApp(true);
-                    showSection(document.querySelector('.nav-link.active').dataset.target);
+                    initializeApp(true); // Re-initialize app to refresh UI with new data
+                    showSection(document.querySelector('.nav-link.active')?.dataset.target || 'dashboard-section'); // Stay on current section or go to dashboard
                     importStatusEl.className = 'text-sm mt-2 p-2 rounded-md bg-green-100 text-green-700';
-                    importStatusEl.textContent = 'Data imported successfully!';
+                    importStatusEl.textContent = 'Data imported and merged successfully!';
                 }, () => {
                      importStatusEl.className = 'text-sm mt-2 p-2 rounded-md bg-yellow-100 text-yellow-700';
                      importStatusEl.textContent = 'Import cancelled.';
-                }, 'Import & Overwrite', 'bg-blue-600');
+                }, 'Import & Merge', 'bg-blue-600'); // Update button text
             };
             reader.readAsText(file);
         }

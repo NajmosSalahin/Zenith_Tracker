@@ -746,7 +746,7 @@
                             ${Object.keys(BEVERAGE_WATER_EQUIVALENT).map(type => `
                                 <div class="flex items-center gap-2">
                                     <label for="log-${type}-qty" class="capitalize flex-grow text-sm font-medium text-gray-700">${type.replace('-', ' ')} (ml)</label>
-                                    <input type="number" id="log-${type}-qty" class="w-24 border border-gray-300 rounded-md shadow-sm p-2" value="250" min="1">
+                                    <input type="number" id="log-${type}-qty" class="w-24 border border-gray-300 rounded-md shadow-sm p-2" value="400" min="1">
                                     <button class="log-drink-btn px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600" data-drink-type="${type}">Log</button>
                                 </div>
                             `).join('')}

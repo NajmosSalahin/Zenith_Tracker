@@ -709,9 +709,9 @@
             { cmd: '/brs', desc: 'Start breathing session', action: () => { navigate('breathing'); setTimeout(startBreathing, 300); } },
             { cmd: '/brp', desc: 'Stop & save breathing session', action: () => stopBreathing() },
             { cmd: '/theme [name]', desc: 'Apply a theme (e.g. /theme dracula)', action: (args) => executeTheme(args) },
-            { cmd: '/exp csv', desc: 'Export analytics to CSV', action: () => exportAnalyticsCSV() },
-            { cmd: '/exp md', desc: 'Export analytics to Markdown', action: () => exportAnalyticsMD() },
-            { cmd: '/exp pdf', desc: 'Export analytics to PDF', action: () => exportAnalyticsPDF() }
+            { cmd: '/csv', desc: 'Export analytics to CSV', action: () => exportAnalyticsCSV() },
+            { cmd: '/md', desc: 'Export analytics to Markdown', action: () => exportAnalyticsMD() },
+            { cmd: '/pdf', desc: 'Export analytics to PDF', action: () => exportAnalyticsPDF() }
         ];
 
         document.addEventListener('keydown', (e) => {
